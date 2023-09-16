@@ -1,0 +1,7 @@
+[
+    {
+        "directory": "/home/Sebastian/Desktop/C(++)-Programms/vulkan-template",
+        "arguments": ["clang++", "-I./includes", "-I./includes/imgui", "-std=c++17"],
+        "file": "main.cpp"
+    }
+]
