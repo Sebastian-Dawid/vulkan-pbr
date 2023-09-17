@@ -7,13 +7,14 @@ BUILD_DIR = build
 MAIN_BUILD = $(BUILD_DIR)/target
 IMGUI_BUILD = $(BUILD_DIR)/imgui
 
-SRC_DIRS = ./src ./includes/src
+SRC_DIRS = ./src
 IMGUI_SRC_DIR = ./includes/imgui
 
 WINDOWING = glfw
 GRAPHICS = vulkan
 
-SRCS = $(shell find $(SRC_DIRS) -name '*.cpp')
+SRCS_FULL = $(shell find $(SRC_DIRS) -name '*.cpp')
+SRCS = $(SRCS_FULL:$(SRC_DIRS)/%=%)
 OBJS = $(SRCS:%=$(MAIN_BUILD)/%.o)
 DEPS = $(OBJS:.o=.d)
 
@@ -31,14 +32,14 @@ CXXFLAGS = -std=c++17
 CPPFLAGS = $(INC_FLAGS) -MMD -MP
 LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 
-$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS) $(IMGUI_OBJS)
-	$(CXX) $(CXXFLAGS) $(CFLAGS) $(OBJS) $(IMGUI_OBJS) -o $(BUILD_DIR)/$(TARGET_EXEC) $(LDFLAGS)
+$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
+	$(CXX) $(CXXFLAGS) $(CFLAGS) $(OBJS) -o $(BUILD_DIR)/$(TARGET_EXEC) $(LDFLAGS)
 
 #$(MAIN_BUILD)/%.c.o: %.c
 #	mkdir -p $(dir $@)
 #	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
-$(MAIN_BUILD)/%.cpp.o: %.cpp
+$(MAIN_BUILD)/%.cpp.o: $(SRC_DIRS)/%.cpp
 	mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
@@ -46,13 +47,15 @@ $(IMGUI_BUILD)/%.cpp.o: %.cpp
 	mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(IMGUI_CFLAGS) -c $< -o $@
 
-.PHONY: test clean
+.PHONY: test clean clean_test
 
 test: $(BUILD_DIR)/$(TARGET_EXEC)
 	$(BUILD_DIR)/$(TARGET_EXEC)
 
 clean:
 	rm -r $(BUILD_DIR)
+
+clean_test: clean test
 
 -include $(DEPS)
 -include $(IMGUI_DEPS)
