@@ -11,6 +11,7 @@
 #include <glm/gtx/hash.hpp>
 
 #include "vulkan_debug_messenger.h"
+#include "vulkan_logical_device.h"
 
 #include <string>
 
@@ -18,8 +19,12 @@ class vulkan_context_t
 {
     private:
         VkInstance instance;
+        VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+        logical_device_t* device;
+
         debug_messenger_t* debug_messenger;
         std::int32_t create_instance(std::string name);
+        std::int32_t pick_physical_device();
 
     public:
         GLFWwindow* window;

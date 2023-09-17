@@ -26,7 +26,7 @@ IMGUI_DEPS = $(IMGUI_OBJS:.o=.d)
 INC_DIRS = $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS = $(addprefix -I,$(INC_DIRS))
 
-CFLAGS = -g -O3 -Wall -Wformat -I./includes -I./includes/imgui
+CFLAGS = -Wall -Wformat -I./includes -I./includes/imgui
 IMGUI_CFLAGS = -g -O3 -Wall -Wformat -I$(IMGUI_SRC_DIR) -I$(IMGUI_SRC_DIR)/backends -I$(IMGUI_SRC_DIR)/misc/cpp
 CXXFLAGS = -std=c++17
 CPPFLAGS = $(INC_FLAGS) -MMD -MP
@@ -47,15 +47,17 @@ $(IMGUI_BUILD)/%.cpp.o: %.cpp
 	mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(IMGUI_CFLAGS) -c $< -o $@
 
-.PHONY: test clean clean_test
+.PHONY: test clean
 
-test: $(BUILD_DIR)/$(TARGET_EXEC)
+test: CFLAGS += -g
+test: clean $(BUILD_DIR)/$(TARGET_EXEC)
 	$(BUILD_DIR)/$(TARGET_EXEC)
 
 clean:
-	rm -r $(BUILD_DIR)
+	rm -rf $(BUILD_DIR)
 
-clean_test: clean test
+release: CFLAGS += -DNDEBUG -O3
+release: clean test
 
 -include $(DEPS)
 -include $(IMGUI_DEPS)

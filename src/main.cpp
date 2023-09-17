@@ -9,6 +9,7 @@ int main()
     vulkan_context_t vk_context("Vulkan Template");
     if (!vk_context.initialized)
     {
+        glfwTerminate();
         return -1;
     }
     vk_context.window = glfwCreateWindow(1280, 720, "Vulkan Template", nullptr, nullptr);

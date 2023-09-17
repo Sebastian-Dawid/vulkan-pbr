@@ -57,10 +57,10 @@ debug_messenger_t::~debug_messenger_t()
         return;
     }
     
-    std::cout << "Destroying Debug Messenger!" << std::endl;
     PFN_vkDestroyDebugUtilsMessengerEXT func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(*(this->instance), "vkDestroyDebugUtilsMessengerEXT");
     if (func != nullptr)
     {
         func(*(this->instance), this->debug_messenger, this->allocator);
     }
+    std::cout << "Destroying Debug Messenger!" << std::endl;
 }

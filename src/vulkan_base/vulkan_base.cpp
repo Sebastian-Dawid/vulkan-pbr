@@ -1,7 +1,9 @@
 #include "vulkan_base.h"
+#include "vulkan_queue_family_indices.h"
 #include "vulkan_validation_layers.h"
 #include <cstring>
 #include <iostream>
+#include <map>
 
 std::vector<const char*> get_required_extentions()
 {
@@ -110,6 +112,100 @@ std::int32_t vulkan_context_t::create_instance(std::string name)
     return 0;
 }
 
+std::uint32_t rate_device_suitablity(VkPhysicalDevice physical_device)
+{
+    VkPhysicalDeviceProperties device_properties;
+    VkPhysicalDeviceFeatures device_features;
+    vkGetPhysicalDeviceProperties(physical_device, &device_properties);
+    vkGetPhysicalDeviceFeatures(physical_device, &device_features);
+   
+    std::cout << "\t" << device_properties.deviceName << std::endl;
+    std::cout << "\t\t" << "Device ID: " << device_properties.deviceID << std::endl;
+    std::cout << "\t\t" << "Vendor ID: " << device_properties.vendorID << std::endl;
+    std::cout << "\t\t" << "GPU Type: ";
+    switch (device_properties.deviceType) {
+        case VK_PHYSICAL_DEVICE_TYPE_OTHER:
+            std::cout << "Other GPU" << std::endl;
+            break;
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+            std::cout << "Integrated GPU" << std::endl;
+            break;
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+            std::cout << "Discrete GPU" << std::endl;
+            break;
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+            std::cout << "Virtual GPU" << std::endl;
+            break;
+        case VK_PHYSICAL_DEVICE_TYPE_CPU:
+            std::cout << "CPU" << std::endl;
+            break;
+        default:
+            std::cout << std::endl;
+    }
+    
+    std::int32_t score = 0;
+
+    if (device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+    {
+        score += 1000;
+    }
+
+    score += device_properties.limits.maxImageDimension2D;
+
+    if (!device_features.geometryShader)
+    {
+        return 0;
+    }
+
+    queue_family_indices_t indices(physical_device);
+    if (!indices.is_complete())
+    {
+        return 0;
+    }
+
+    return score;
+}
+
+std::int32_t vulkan_context_t::pick_physical_device()
+{
+    std::uint32_t device_count = 0;
+    vkEnumeratePhysicalDevices(this->instance, &device_count, nullptr);
+    std::cout << "Number of physical devices: " << device_count << std::endl;
+    if (device_count == 0)
+    {
+        std::cerr << "Failed to find GPUs with Vulkan support!" << std::endl;
+        return -1;
+    }
+
+    std::vector<VkPhysicalDevice> devices(device_count);
+    vkEnumeratePhysicalDevices(this->instance, &device_count, devices.data());
+
+    std::multimap<std::uint32_t, VkPhysicalDevice> candidates;
+    
+    std::cout << "Available Devices: " << std::endl;
+    for (const VkPhysicalDevice& device : devices)
+    {
+        std::uint32_t score = rate_device_suitablity(device);
+        candidates.insert(std::make_pair(score, device));
+    }
+
+    if (candidates.rbegin()->first > 0)
+    {
+        this->physical_device = candidates.rbegin()->second;
+        std::cout << "Chosen GPU: " << std::endl;
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(this->physical_device, &props);
+        std::cout << "\t" << props.deviceName << std::endl;
+    }
+    else
+    {
+        std::cerr << "Failed to find suitable GPU!" << std::endl;
+        return -1;
+    }
+
+    return 0;
+}
+
 vulkan_context_t::vulkan_context_t(std::string name)
 {
     if (create_instance(name) != 0) return;
@@ -122,12 +218,19 @@ vulkan_context_t::vulkan_context_t(std::string name)
             return;
         }
     }
+    if (pick_physical_device() != 0) return;
+    this->device = new logical_device_t(&(this->physical_device));
+    if (this->device->init() != 0)
+    {
+        return;
+    }
     this->initialized = true;
 }
 
 vulkan_context_t::~vulkan_context_t()
 {
-    std::cout << "Destroying Vulkan Context!" << std::endl;
+    delete this->device;
+
     if (ENABLE_VALIDATION_LAYERS)
     {
         delete this->debug_messenger;
@@ -135,4 +238,5 @@ vulkan_context_t::~vulkan_context_t()
 
     vkDestroyInstance(this->instance, nullptr);
     glfwDestroyWindow(this->window);
+    std::cout << "Destroying Vulkan Context!" << std::endl;
 }
