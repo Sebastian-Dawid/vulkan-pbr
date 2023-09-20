@@ -1,11 +1,13 @@
 #include "vulkan_base.h"
+#include "vulkan_constants.h"
 #include "vulkan_queue_family_indices.h"
 #include "vulkan_validation_layers.h"
 #include <cstring>
 #include <iostream>
 #include <map>
+#include <set>
 
-std::vector<const char*> get_required_extentions()
+std::vector<const char*> get_required_extensions()
 {
     std::uint32_t glfw_ext_count = 0;
     const char** p_glfw_exts;
@@ -42,7 +44,7 @@ std::int32_t vulkan_context_t::create_instance(std::string name)
     create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     create_info.pApplicationInfo = &app_info;
 
-    std::vector<const char*> glfw_exts = get_required_extentions();
+    std::vector<const char*> glfw_exts = get_required_extensions();
 
     create_info.enabledExtensionCount = glfw_exts.size();
     create_info.ppEnabledExtensionNames = glfw_exts.data();
@@ -112,7 +114,23 @@ std::int32_t vulkan_context_t::create_instance(std::string name)
     return 0;
 }
 
-std::uint32_t rate_device_suitablity(VkPhysicalDevice physical_device)
+bool check_physical_device_extension_support(VkPhysicalDevice physical_device)
+{
+    std::uint32_t ext_count = 0;
+    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &ext_count, nullptr);
+    std::vector<VkExtensionProperties> available_extensions(ext_count);
+    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &ext_count, available_extensions.data());
+   
+    std::set<std::string> required_extensions(device_extensions.begin(), device_extensions.end());
+    for (const VkExtensionProperties& ext : available_extensions)
+    {
+        required_extensions.erase(ext.extensionName);
+    }
+
+    return required_extensions.empty();
+}
+
+std::uint32_t rate_device_suitablity(const VkPhysicalDevice& physical_device, VkSurfaceKHR& surface)
 {
     VkPhysicalDeviceProperties device_properties;
     VkPhysicalDeviceFeatures device_features;
@@ -157,8 +175,16 @@ std::uint32_t rate_device_suitablity(VkPhysicalDevice physical_device)
         return 0;
     }
 
-    queue_family_indices_t indices(physical_device);
-    if (!indices.is_complete())
+    bool exts_supported = check_physical_device_extension_support(physical_device);
+
+    queue_family_indices_t indices(physical_device, surface);
+    if (!indices.is_complete() || !exts_supported)
+    {
+        return 0;
+    }
+
+    swap_chain_t swap_chain(physical_device, surface);
+    if (!swap_chain.is_adequate())
     {
         return 0;
     }
@@ -185,7 +211,7 @@ std::int32_t vulkan_context_t::pick_physical_device()
     std::cout << "Available Devices: " << std::endl;
     for (const VkPhysicalDevice& device : devices)
     {
-        std::uint32_t score = rate_device_suitablity(device);
+        std::uint32_t score = rate_device_suitablity(device, this->surface);
         candidates.insert(std::make_pair(score, device));
     }
 
@@ -206,8 +232,19 @@ std::int32_t vulkan_context_t::pick_physical_device()
     return 0;
 }
 
+std::int32_t vulkan_context_t::create_surface()
+{
+    if (glfwCreateWindowSurface(this->instance, this->window, nullptr, &(this->surface)) != VK_SUCCESS)
+    {
+        std::cerr << "Failed to create window surface!" << std::endl;
+        return -1;
+    }
+    return 0;
+}
+
 vulkan_context_t::vulkan_context_t(std::string name)
 {
+    this->window = glfwCreateWindow(1280, 720, name.c_str(), nullptr, nullptr);
     if (create_instance(name) != 0) return;
     if (ENABLE_VALIDATION_LAYERS)
     {
@@ -218,17 +255,25 @@ vulkan_context_t::vulkan_context_t(std::string name)
             return;
         }
     }
+    if (create_surface() != 0) return;
     if (pick_physical_device() != 0) return;
-    this->device = new logical_device_t(&(this->physical_device));
+    this->device = new logical_device_t(&(this->physical_device), this->surface);
     if (this->device->init() != 0)
     {
         return;
     }
+    this->swap_chain = new swap_chain_t(this->physical_device, this->surface);
+    if (this->swap_chain->init(this->device, this->surface, this->window) != 0)
+    {
+        return;
+    }
+
     this->initialized = true;
 }
 
 vulkan_context_t::~vulkan_context_t()
 {
+    delete this->swap_chain;
     delete this->device;
 
     if (ENABLE_VALIDATION_LAYERS)
@@ -236,7 +281,10 @@ vulkan_context_t::~vulkan_context_t()
         delete this->debug_messenger;
     }
 
+    vkDestroySurfaceKHR(this->instance, this->surface, nullptr);
+    std::cout << "Destroying Surface!" << std::endl;
     vkDestroyInstance(this->instance, nullptr);
+    std::cout << "Destroying Instance!" << std::endl;
     glfwDestroyWindow(this->window);
     std::cout << "Destroying Vulkan Context!" << std::endl;
 }

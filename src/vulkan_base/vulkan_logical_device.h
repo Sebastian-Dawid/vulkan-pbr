@@ -7,17 +7,16 @@
 class logical_device_t
 {
     private:
-        VkDevice device;
-        VkDeviceCreateInfo create_info{};
-
-        queue_family_indices_t indices;
-        VkQueue graphics_queue;
-        VkDeviceQueueCreateInfo queue_create_info{};
-
         const VkPhysicalDevice* physical_device;
         const VkAllocationCallbacks* allocator = nullptr;
+    
     public:
+        VkDevice device;
+        VkQueue graphics_queue;
+        VkQueue present_queue;
+        queue_family_indices_t indices;
+        
         std::int32_t init();
-        logical_device_t(VkPhysicalDevice* physical_device);
+        logical_device_t(VkPhysicalDevice* physical_device, VkSurfaceKHR& surface);
         ~logical_device_t();
 };

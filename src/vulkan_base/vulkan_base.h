@@ -12,6 +12,7 @@
 
 #include "vulkan_debug_messenger.h"
 #include "vulkan_logical_device.h"
+#include "vulkan_swap_chain.h"
 
 #include <string>
 
@@ -21,10 +22,13 @@ class vulkan_context_t
         VkInstance instance;
         VkPhysicalDevice physical_device = VK_NULL_HANDLE;
         logical_device_t* device;
+        VkSurfaceKHR surface;
+        swap_chain_t* swap_chain;
 
         debug_messenger_t* debug_messenger;
         std::int32_t create_instance(std::string name);
         std::int32_t pick_physical_device();
+        std::int32_t create_surface();
 
     public:
         GLFWwindow* window;
@@ -33,4 +37,4 @@ class vulkan_context_t
         ~vulkan_context_t();
 };
 
-std::vector<const char*> get_required_extentions();
+std::vector<const char*> get_required_extensions();

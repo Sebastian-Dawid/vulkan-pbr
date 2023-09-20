@@ -12,7 +12,6 @@ int main()
         glfwTerminate();
         return -1;
     }
-    vk_context.window = glfwCreateWindow(1280, 720, "Vulkan Template", nullptr, nullptr);
 
     while (!glfwWindowShouldClose(vk_context.window))
     {
