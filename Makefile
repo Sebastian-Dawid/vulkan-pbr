@@ -26,18 +26,26 @@ IMGUI_DEPS = $(IMGUI_OBJS:.o=.d)
 INC_DIRS = $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS = $(addprefix -I,$(INC_DIRS))
 
+SHADER_SRCS_FULL = $(shell find $(SRC_DIRS) -name '*.vert' -o -name '*.frag')
+SHADER_SRCS = $(SHADER_SRCS_FULL:$(SRC_DIRS)/%=%)
+SHADER_OBJS = $(SHADER_SRCS:%=$(MAIN_BUILD)/%.spv)
+
 CFLAGS = -Wall -Wformat -I./includes -I./includes/imgui
 IMGUI_CFLAGS = -g -O3 -Wall -Wformat -I$(IMGUI_SRC_DIR) -I$(IMGUI_SRC_DIR)/backends -I$(IMGUI_SRC_DIR)/misc/cpp
 CXXFLAGS = -std=c++17
 CPPFLAGS = $(INC_FLAGS) -MMD -MP
 LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 
-$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
+$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS) $(SHADER_OBJS)
 	$(CXX) $(CXXFLAGS) $(CFLAGS) $(OBJS) -o $(BUILD_DIR)/$(TARGET_EXEC) $(LDFLAGS)
 
 #$(MAIN_BUILD)/%.c.o: %.c
 #	mkdir -p $(dir $@)
 #	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
+$(MAIN_BUILD)/%.spv: $(SRC_DIRS)/%
+	mkdir -p $(dir $@)
+	glslc $< -o $@
 
 $(MAIN_BUILD)/%.cpp.o: $(SRC_DIRS)/%.cpp
 	mkdir -p $(dir $@)

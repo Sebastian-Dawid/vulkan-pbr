@@ -242,6 +242,41 @@ std::int32_t vulkan_context_t::create_surface()
     return 0;
 }
 
+std::int32_t vulkan_context_t::create_render_pass()
+{
+    VkAttachmentDescription color_attachment{};
+    color_attachment.format = this->swap_chain->format.format;
+    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference color_attachment_ref{};
+    color_attachment_ref.attachment = 0;
+    color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &color_attachment_ref;
+
+    VkRenderPassCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    create_info.attachmentCount = 1;
+    create_info.pAttachments = &color_attachment;
+    create_info.subpassCount = 1;
+    create_info.pSubpasses = &subpass;
+
+    if (vkCreateRenderPass(this->device->device, &create_info, nullptr, &(this->render_pass)) != VK_SUCCESS)
+    {
+        std::cerr << "Failed to create render pass!" << std::endl;
+    }
+    return 0;
+}
+
 vulkan_context_t::vulkan_context_t(std::string name)
 {
     this->window = glfwCreateWindow(1280, 720, name.c_str(), nullptr, nullptr);
@@ -267,12 +302,22 @@ vulkan_context_t::vulkan_context_t(std::string name)
     {
         return;
     }
+    if (create_render_pass() != 0) return;
+    this->graphics_pipeline = new graphics_pipeline_t(&(this->render_pass), this->swap_chain->extent);
+    pipeline_shaders_t shaders = { "./build/target/shaders/main.vert.spv", std::nullopt, "./build/target/shaders/main.frag.spv" };
+    if (this->graphics_pipeline->init(shaders, this->device) != 0)
+    {
+        return;
+    }
 
     this->initialized = true;
 }
 
 vulkan_context_t::~vulkan_context_t()
 {
+    delete this->graphics_pipeline;
+    vkDestroyRenderPass(this->device->device, this->render_pass, nullptr);
+    std::cout << "Destroying Render Pass!" << std::endl;
     delete this->swap_chain;
     delete this->device;
 

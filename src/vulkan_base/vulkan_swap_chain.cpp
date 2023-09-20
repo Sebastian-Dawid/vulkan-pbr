@@ -101,10 +101,38 @@ std::int32_t swap_chain_t::init(const logical_device_t* logical_device, VkSurfac
         return -1;
     }
 
-    vkGetSwapchainImagesKHR(logical_device->device, this->swap_chain, &image_count, nullptr);
-    this->swap_chain_images.resize(image_count);
-    vkGetSwapchainImagesKHR(logical_device->device, this->swap_chain, &image_count, this->swap_chain_images.data());
     this->device = &(logical_device->device);
+  
+    vkGetSwapchainImagesKHR(logical_device->device, this->swap_chain, &image_count, nullptr);
+    this->images.resize(image_count);
+    vkGetSwapchainImagesKHR(logical_device->device, this->swap_chain, &image_count, this->images.data());
+    
+    this->image_views.resize(image_count);
+    for (std::uint32_t i = 0; i < image_count; ++i)
+    {
+        VkImageViewCreateInfo create_info{};
+        create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        create_info.image = this->images[i];
+        create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        create_info.format = this->format.format;
+        create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        create_info.subresourceRange.baseMipLevel = 0;
+        create_info.subresourceRange.levelCount = 1;
+        create_info.subresourceRange.baseArrayLayer = 0;
+        create_info.subresourceRange.layerCount = 1;
+
+        if (vkCreateImageView(logical_device->device, &create_info, nullptr, &(this->image_views[i])) != VK_SUCCESS)
+        {
+            std::cerr << "Failed to create image views!" << std::endl;
+            return -1;
+        }
+
+    }
+
     return 0;
 }
 
@@ -135,6 +163,11 @@ swap_chain_t::~swap_chain_t()
     {
         return;
     }
+    for (VkImageView image_view : this->image_views)
+    {
+        vkDestroyImageView(*(this->device), image_view, nullptr);
+    }
+    std::cout << "Destroying Image Views!" << std::endl;
     vkDestroySwapchainKHR(*(this->device), this->swap_chain, this->allocator);
     std::cout << "Destroying Swap Chain!" << std::endl;
 }

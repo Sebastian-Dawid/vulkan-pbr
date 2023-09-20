@@ -22,7 +22,8 @@ class swap_chain_t
 
     public:
         VkSwapchainKHR swap_chain;
-        std::vector<VkImage> swap_chain_images;
+        std::vector<VkImage> images;
+        std::vector<VkImageView> image_views;
         VkSurfaceFormatKHR format;
         VkPresentModeKHR present_mode;
         VkExtent2D extent;
