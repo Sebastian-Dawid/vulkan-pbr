@@ -17,6 +17,15 @@
 
 #include <string>
 
+struct render_pass_settings_t
+{
+    std::vector<VkAttachmentDescription> attachments;
+    std::vector<VkAttachmentReference> attachment_references;
+    std::vector<VkSubpassDescription> subpasses;
+
+    void populate_defaults(VkFormat format);
+};
+
 class vulkan_context_t
 {
     private:
@@ -32,7 +41,7 @@ class vulkan_context_t
         std::int32_t create_instance(std::string name);
         std::int32_t pick_physical_device();
         std::int32_t create_surface();
-        std::int32_t create_render_pass();
+        std::int32_t create_render_pass(const render_pass_settings_t& settings);
 
     public:
         GLFWwindow* window;

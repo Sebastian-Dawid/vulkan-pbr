@@ -242,10 +242,10 @@ std::int32_t vulkan_context_t::create_surface()
     return 0;
 }
 
-std::int32_t vulkan_context_t::create_render_pass()
+void render_pass_settings_t::populate_defaults(VkFormat format)
 {
     VkAttachmentDescription color_attachment{};
-    color_attachment.format = this->swap_chain->format.format;
+    color_attachment.format = format;
     color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
     color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -253,22 +253,28 @@ std::int32_t vulkan_context_t::create_render_pass()
     color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    this->attachments.push_back(color_attachment);
 
     VkAttachmentReference color_attachment_ref{};
     color_attachment_ref.attachment = 0;
     color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    
+    this->attachment_references.push_back(color_attachment_ref);
+
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &color_attachment_ref;
+    subpass.colorAttachmentCount = static_cast<std::uint32_t>(this->attachment_references.size());
+    subpass.pColorAttachments = this->attachment_references.data();
+    this->subpasses.push_back(subpass);
+}
 
+std::int32_t vulkan_context_t::create_render_pass(const render_pass_settings_t& settings)
+{
     VkRenderPassCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    create_info.attachmentCount = 1;
-    create_info.pAttachments = &color_attachment;
-    create_info.subpassCount = 1;
-    create_info.pSubpasses = &subpass;
+    create_info.attachmentCount = static_cast<std::uint32_t>(settings.attachments.size());
+    create_info.pAttachments = settings.attachments.data();
+    create_info.subpassCount = static_cast<std::uint32_t>(settings.subpasses.size());
+    create_info.pSubpasses = settings.subpasses.data();
 
     if (vkCreateRenderPass(this->device->device, &create_info, nullptr, &(this->render_pass)) != VK_SUCCESS)
     {
@@ -302,10 +308,14 @@ vulkan_context_t::vulkan_context_t(std::string name)
     {
         return;
     }
-    if (create_render_pass() != 0) return;
+    render_pass_settings_t render_pass_settings;
+    render_pass_settings.populate_defaults(this->swap_chain->format.format);
+    if (create_render_pass(render_pass_settings) != 0) return;
     this->graphics_pipeline = new graphics_pipeline_t(&(this->render_pass), this->swap_chain->extent);
     pipeline_shaders_t shaders = { "./build/target/shaders/main.vert.spv", std::nullopt, "./build/target/shaders/main.frag.spv" };
-    if (this->graphics_pipeline->init(shaders, this->device) != 0)
+    pipeline_settings_t pipeline_settings;
+    pipeline_settings.populate_defaults();
+    if (this->graphics_pipeline->init(shaders, pipeline_settings, this->device) != 0)
     {
         return;
     }

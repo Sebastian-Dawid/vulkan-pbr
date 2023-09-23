@@ -14,6 +14,23 @@ struct pipeline_shaders_t
     std::optional<std::string> fragment;
 };
 
+struct pipeline_settings_t
+{
+    VkPipelineVertexInputStateCreateInfo vertex_input{};
+    VkPipelineInputAssemblyStateCreateInfo input_assembly{};
+    VkPipelineViewportStateCreateInfo viewport_state{};
+    std::optional<VkViewport> viewport = std::nullopt;
+    std::optional<VkRect2D> scissor = std::nullopt;
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    std::vector<VkPipelineColorBlendAttachmentState> color_blend_attachments;
+    VkPipelineColorBlendStateCreateInfo color_blending{};
+    std::vector<VkDynamicState> dynamic_states;
+    VkPipelineDynamicStateCreateInfo dynamic_state{};
+
+    void populate_defaults();
+};
+
 class graphics_pipeline_t
 {
     private:
@@ -25,7 +42,7 @@ class graphics_pipeline_t
     public:
         VkPipelineLayout pipeline_layout;
         VkPipeline pipeline;
-        std::int32_t init(pipeline_shaders_t shaders, const logical_device_t* device);
+        std::int32_t init(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings, const logical_device_t* device);
         graphics_pipeline_t(const VkRenderPass* render_pass, VkExtent2D swap_chain_extent);
         ~graphics_pipeline_t();
 };
