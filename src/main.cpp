@@ -2,10 +2,6 @@
 
 int main()
 {
-    glfwInit();
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
     vulkan_context_t vk_context("Vulkan Template");
     if (!vk_context.initialized)
     {
@@ -13,10 +9,17 @@ int main()
         return -1;
     }
 
-    while (!glfwWindowShouldClose(vk_context.window))
+    vk_context.main_loop([&]
     {
-        glfwPollEvents();
-    }
+        while (!glfwWindowShouldClose(vk_context.window))
+        {
+            glfwPollEvents();
+            if (vk_context.draw_frame([]{}) != 0)
+            {
+                break;
+            }
+        }
+    });
 
     glfwTerminate();
     return 0;

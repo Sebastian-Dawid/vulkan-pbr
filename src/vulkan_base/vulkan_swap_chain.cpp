@@ -105,6 +105,7 @@ std::int32_t swap_chain_t::init(const logical_device_t* logical_device, VkSurfac
   
     vkGetSwapchainImagesKHR(logical_device->device, this->swap_chain, &image_count, nullptr);
     this->images.resize(image_count);
+    std::cout << "Available Swap Chain Images: " << image_count << std::endl;
     vkGetSwapchainImagesKHR(logical_device->device, this->swap_chain, &image_count, this->images.data());
     
     this->image_views.resize(image_count);

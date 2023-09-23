@@ -265,6 +265,15 @@ void render_pass_settings_t::populate_defaults(VkFormat format)
     subpass.colorAttachmentCount = static_cast<std::uint32_t>(this->attachment_references.size());
     subpass.pColorAttachments = this->attachment_references.data();
     this->subpasses.push_back(subpass);
+
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass= 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    this->dependencies.push_back(dependency);
 }
 
 std::int32_t vulkan_context_t::create_render_pass(const render_pass_settings_t& settings)
@@ -275,6 +284,8 @@ std::int32_t vulkan_context_t::create_render_pass(const render_pass_settings_t& 
     create_info.pAttachments = settings.attachments.data();
     create_info.subpassCount = static_cast<std::uint32_t>(settings.subpasses.size());
     create_info.pSubpasses = settings.subpasses.data();
+    create_info.dependencyCount = static_cast<std::uint32_t>(settings.dependencies.size());
+    create_info.pDependencies = settings.dependencies.data();
 
     if (vkCreateRenderPass(this->device->device, &create_info, nullptr, &(this->render_pass)) != VK_SUCCESS)
     {
@@ -283,9 +294,216 @@ std::int32_t vulkan_context_t::create_render_pass(const render_pass_settings_t& 
     return 0;
 }
 
+std::int32_t vulkan_context_t::create_framebuffers()
+{
+    this->swap_chain_framebuffers.resize(this->swap_chain->image_views.size());
+    for (std::size_t i = 0; i < this->swap_chain->image_views.size(); ++i)
+    {
+        VkImageView attachments[] = { this->swap_chain->image_views[i] };
+        
+        VkFramebufferCreateInfo create_info{};
+        create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        create_info.renderPass = this->render_pass;
+        create_info.attachmentCount = 1;
+        create_info.pAttachments = attachments;
+        create_info.width = this->swap_chain->extent.width;
+        create_info.height = this->swap_chain->extent.height;
+        create_info.layers = 1;
+
+        if (vkCreateFramebuffer(this->device->device, &create_info, nullptr, &(this->swap_chain_framebuffers[i])) != VK_SUCCESS)
+        {
+            std::cerr << "Failed to create framebuffer!" << std::endl;
+            return -1;
+        }
+    }
+    return 0;
+}
+
+std::int32_t vulkan_context_t::create_command_pool()
+{
+    VkCommandPoolCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    create_info.queueFamilyIndex = this->device->indices.graphics_family.value();
+    
+    if (vkCreateCommandPool(this->device->device, &create_info, nullptr, &(this->command_pool)) != VK_SUCCESS)
+    {
+        std::cerr << "Failed to create command pool!" << std::endl;
+        return -1;
+    }
+
+    return 0;
+}
+
+std::int32_t vulkan_context_t::create_sync_objects()
+{
+    this->sync_objects.image_available.resize(MAX_FRAMES_IN_FLIGHT);
+    this->sync_objects.render_finished.resize(MAX_FRAMES_IN_FLIGHT);
+    this->sync_objects.in_flight.resize(MAX_FRAMES_IN_FLIGHT);
+
+    VkSemaphoreCreateInfo semaphore_info{};
+    semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    VkFenceCreateInfo fence_info{};
+    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    
+    for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        if (vkCreateSemaphore(this->device->device, &semaphore_info, nullptr, &this->sync_objects.image_available[i]) != VK_SUCCESS
+                || vkCreateSemaphore(this->device->device, &semaphore_info, nullptr, &this->sync_objects.render_finished[i]) != VK_SUCCESS
+                || vkCreateFence(this->device->device, &fence_info, nullptr, &this->sync_objects.in_flight[i]) != VK_SUCCESS)
+        {
+            std::cerr << "Failed to create sync objects!" << std::endl;
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+std::int32_t vulkan_context_t::recreate_swap_chain()
+{
+    std::int32_t width = 0, height = 0;
+    glfwGetFramebufferSize(this->window, &width, &height);
+    while (width == 0 || height == 0)
+    {
+        glfwGetFramebufferSize(this->window, &width, &height);
+        glfwWaitEvents();
+    }
+    vkDeviceWaitIdle(this->device->device);
+
+    for (VkFramebuffer fb : this->swap_chain_framebuffers)
+    {
+        vkDestroyFramebuffer(this->device->device, fb, nullptr);
+    }
+    delete this->swap_chain;
+
+    this->swap_chain = new swap_chain_t(this->physical_device, this->surface);
+    if (this->swap_chain->init(this->device, this->surface, this->window) != 0) return -1;
+    if (create_framebuffers() != 0) return -1;
+
+    return 0;
+}
+
+std::int32_t vulkan_context_t::draw_frame(std::function<void()> func)
+{
+    vkWaitForFences(this->device->device, 1, &this->sync_objects.in_flight[this->current_frame], VK_TRUE, UINT64_MAX);
+
+    std::uint32_t image_index;
+    VkResult result = vkAcquireNextImageKHR(this->device->device, this->swap_chain->swap_chain, UINT64_MAX,
+            this->sync_objects.image_available[this->current_frame], VK_NULL_HANDLE, &image_index);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        if (recreate_swap_chain() != 0)
+        {
+            return -1;
+        }
+        return 0;
+    }
+    else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+    {
+        std::cerr << "Failed to aquire swap chain image!" << std::endl;
+        return -1;
+    }
+
+    vkResetFences(this->device->device, 1, &this->sync_objects.in_flight[this->current_frame]);
+    vkResetCommandBuffer(this->command_buffers->command_buffers[this->current_frame], 0);
+
+    recording_settings_t settings{};
+    settings.populate_defaults(this->render_pass, this->swap_chain_framebuffers[image_index], this->swap_chain->extent, this->graphics_pipeline->pipeline);
+    settings.draw_command = [&] (VkCommandBuffer command_buffer)
+    {
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = static_cast<float>(this->swap_chain->extent.width);
+        viewport.height = static_cast<float>(this->swap_chain->extent.height);
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = this->swap_chain->extent;
+        vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+        vkCmdDraw(command_buffer, 3, 1, 0, 0);
+    };
+
+    if (this->command_buffers->record(this->current_frame, settings) != 0)
+    {
+        return -1;
+    }
+
+    VkSubmitInfo submit_info{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkSemaphore wait_semaphores[] = { this->sync_objects.image_available[this->current_frame] };
+    VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = wait_semaphores;
+    submit_info.pWaitDstStageMask = wait_stages;
+
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &this->command_buffers->command_buffers[this->current_frame];
+
+    VkSemaphore signal_semaphores[] = { this->sync_objects.render_finished[this->current_frame] };
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = signal_semaphores;
+
+    if (vkQueueSubmit(this->device->graphics_queue, 1, &submit_info, this->sync_objects.in_flight[this->current_frame]) != VK_SUCCESS)
+    {
+        std::cerr << "Failed to submit draw command buffer to queue!" << std::endl;
+        return -1;
+    }
+
+    VkPresentInfoKHR present_info{};
+    present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+
+    present_info.waitSemaphoreCount = 1;
+    present_info.pWaitSemaphores = signal_semaphores;
+
+    VkSwapchainKHR swap_chains[] = { this->swap_chain->swap_chain };
+    present_info.swapchainCount = 1;
+    present_info.pSwapchains = swap_chains;
+    present_info.pImageIndices = &image_index;
+
+    result = vkQueuePresentKHR(this->device->present_queue, &present_info);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || this->framebuffer_resized)
+    {
+        this->framebuffer_resized = false;
+        if (recreate_swap_chain() != 0)
+        {
+            return -1;
+        }
+    }
+    else if (result != VK_SUCCESS)
+    {
+        std::cerr << "Failed to present swap chain image!" << std::endl;
+        return -1;
+    }
+
+    this->current_frame = (this->current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
+
+    return 0;
+}
+
+void vulkan_context_t::main_loop(std::function<void()> func)
+{
+    func();
+    vkDeviceWaitIdle(this->device->device);
+}
+
 vulkan_context_t::vulkan_context_t(std::string name)
 {
+    glfwInit();
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
     this->window = glfwCreateWindow(1280, 720, name.c_str(), nullptr, nullptr);
+    glfwSetWindowUserPointer(this->window, this);
+    glfwSetFramebufferSizeCallback(this->window, framebuffer_resize_callback);
+
     if (create_instance(name) != 0) return;
     if (ENABLE_VALIDATION_LAYERS)
     {
@@ -298,36 +516,55 @@ vulkan_context_t::vulkan_context_t(std::string name)
     }
     if (create_surface() != 0) return;
     if (pick_physical_device() != 0) return;
+    
     this->device = new logical_device_t(&(this->physical_device), this->surface);
-    if (this->device->init() != 0)
-    {
-        return;
-    }
+    if (this->device->init() != 0) return;
+    
     this->swap_chain = new swap_chain_t(this->physical_device, this->surface);
-    if (this->swap_chain->init(this->device, this->surface, this->window) != 0)
-    {
-        return;
-    }
+    if (this->swap_chain->init(this->device, this->surface, this->window) != 0) return;
+    
     render_pass_settings_t render_pass_settings;
     render_pass_settings.populate_defaults(this->swap_chain->format.format);
     if (create_render_pass(render_pass_settings) != 0) return;
     this->graphics_pipeline = new graphics_pipeline_t(&(this->render_pass), this->swap_chain->extent);
+    
     pipeline_shaders_t shaders = { "./build/target/shaders/main.vert.spv", std::nullopt, "./build/target/shaders/main.frag.spv" };
     pipeline_settings_t pipeline_settings;
     pipeline_settings.populate_defaults();
-    if (this->graphics_pipeline->init(shaders, pipeline_settings, this->device) != 0)
-    {
-        return;
-    }
-
+    if (this->graphics_pipeline->init(shaders, pipeline_settings, this->device) != 0) return;
+    if (create_framebuffers() != 0) return;
+    if (create_command_pool() != 0) return;
+    
+    this->command_buffers = new command_buffers_t();
+    if (this->command_buffers->init(this->command_pool, &(this->device->device)) != 0) return;
+    if (create_sync_objects() != 0) return;
     this->initialized = true;
 }
 
 vulkan_context_t::~vulkan_context_t()
 {
+    for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        vkDestroySemaphore(this->device->device, this->sync_objects.image_available[i], nullptr);
+        vkDestroySemaphore(this->device->device, this->sync_objects.render_finished[i], nullptr);
+        vkDestroyFence(this->device->device, this->sync_objects.in_flight[i], nullptr);
+    }
+    std::cout << "Destroying Sync Objects!" << std::endl;
+    
+    vkDestroyCommandPool(this->device->device, this->command_pool, nullptr);
+    std::cout << "Destroying Command Pool!" << std::endl;
+    
+    for (VkFramebuffer fb : this->swap_chain_framebuffers)
+    {
+        vkDestroyFramebuffer(this->device->device, fb, nullptr);
+    }
+    std::cout << "Destroying Framebuffer(s)!" << std::endl;
+    
     delete this->graphics_pipeline;
+    
     vkDestroyRenderPass(this->device->device, this->render_pass, nullptr);
     std::cout << "Destroying Render Pass!" << std::endl;
+    
     delete this->swap_chain;
     delete this->device;
 
@@ -342,4 +579,10 @@ vulkan_context_t::~vulkan_context_t()
     std::cout << "Destroying Instance!" << std::endl;
     glfwDestroyWindow(this->window);
     std::cout << "Destroying Vulkan Context!" << std::endl;
+}
+
+void vulkan_context_t::framebuffer_resize_callback(GLFWwindow* window, std::int32_t width, std::int32_t height)
+{
+    vulkan_context_t* context = reinterpret_cast<vulkan_context_t*>(glfwGetWindowUserPointer(window));
+    context->framebuffer_resized = true;
 }
