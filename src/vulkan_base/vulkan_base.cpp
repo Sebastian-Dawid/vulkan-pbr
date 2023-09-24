@@ -385,7 +385,7 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
     return 0;
 }
 
-std::int32_t vulkan_context_t::draw_frame(std::function<void()> func)
+std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vulkan_context_t*)> func)
 {
     vkWaitForFences(this->device->device, 1, &this->sync_objects.in_flight[this->current_frame], VK_TRUE, UINT64_MAX);
 
@@ -412,23 +412,7 @@ std::int32_t vulkan_context_t::draw_frame(std::function<void()> func)
 
     recording_settings_t settings{};
     settings.populate_defaults(this->render_pass, this->swap_chain_framebuffers[image_index], this->swap_chain->extent, this->graphics_pipeline->pipeline);
-    settings.draw_command = [&] (VkCommandBuffer command_buffer)
-    {
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = static_cast<float>(this->swap_chain->extent.width);
-        viewport.height = static_cast<float>(this->swap_chain->extent.height);
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-
-        VkRect2D scissor{};
-        scissor.offset = { 0, 0 };
-        scissor.extent = this->swap_chain->extent;
-        vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-        vkCmdDraw(command_buffer, 3, 1, 0, 0);
-    };
+    settings.draw_command = [&] (VkCommandBuffer command_buffer) { func(command_buffer, this); };
 
     if (this->command_buffers->record(this->current_frame, settings) != 0)
     {
@@ -579,6 +563,11 @@ vulkan_context_t::~vulkan_context_t()
     std::cout << "Destroying Instance!" << std::endl;
     glfwDestroyWindow(this->window);
     std::cout << "Destroying Vulkan Context!" << std::endl;
+}
+
+VkExtent2D vulkan_context_t::get_swap_chain_extent()
+{
+    return this->swap_chain->extent;
 }
 
 void vulkan_context_t::framebuffer_resize_callback(GLFWwindow* window, std::int32_t width, std::int32_t height)

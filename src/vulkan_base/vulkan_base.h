@@ -66,8 +66,9 @@ class vulkan_context_t
         GLFWwindow* window;
         bool framebuffer_resized = false;
         bool initialized = false;
-        std::int32_t draw_frame(std::function<void(/* args to come */)> func);
+        std::int32_t draw_frame(std::function<void(VkCommandBuffer, vulkan_context_t*)> func);
         void main_loop(std::function<void()> func);
+        VkExtent2D get_swap_chain_extent();
         vulkan_context_t(std::string name);
         ~vulkan_context_t();
 };
