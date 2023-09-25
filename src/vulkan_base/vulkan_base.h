@@ -3,18 +3,12 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtx/hash.hpp>
-
 #include "vulkan_debug_messenger.h"
 #include "vulkan_logical_device.h"
 #include "vulkan_swap_chain.h"
 #include "vulkan_graphics_pipeline.h"
 #include "vulkan_command_buffer.h"
+#include "vulkan_buffer.h"
 
 #include <string>
 
@@ -37,11 +31,13 @@ class vulkan_context_t
         VkSurfaceKHR surface;
         swap_chain_t* swap_chain;
         VkRenderPass render_pass;
-        graphics_pipeline_t* graphics_pipeline;
+        graphics_pipeline_t* current_pipeline;
+        std::vector<graphics_pipeline_t*> graphics_pipelines;
         std::vector<VkFramebuffer> swap_chain_framebuffers;
         VkCommandPool command_pool;
         command_buffers_t* command_buffers;
         std::uint32_t current_frame = 0;
+        std::vector<buffer_t*> buffers;
 
         struct
         {
@@ -66,6 +62,12 @@ class vulkan_context_t
         GLFWwindow* window;
         bool framebuffer_resized = false;
         bool initialized = false;
+
+        std::int32_t add_pipeline(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings);
+        std::int32_t set_active_pipeline(std::uint32_t index);
+        std::int32_t add_buffer(const buffer_settings_t& settings);
+        buffer_t* get_buffer(std::uint32_t index);
+        
         std::int32_t draw_frame(std::function<void(VkCommandBuffer, vulkan_context_t*)> func);
         void main_loop(std::function<void()> func);
         VkExtent2D get_swap_chain_extent();

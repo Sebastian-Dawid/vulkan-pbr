@@ -16,6 +16,8 @@ struct pipeline_shaders_t
 
 struct pipeline_settings_t
 {
+    std::vector<VkVertexInputBindingDescription> vertex_binding_descriptions;
+    std::vector<VkVertexInputAttributeDescription> vertex_attribute_descriptions;
     VkPipelineVertexInputStateCreateInfo vertex_input{};
     VkPipelineInputAssemblyStateCreateInfo input_assembly{};
     VkPipelineViewportStateCreateInfo viewport_state{};

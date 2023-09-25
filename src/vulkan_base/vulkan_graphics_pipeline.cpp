@@ -1,13 +1,20 @@
 #include "vulkan_graphics_pipeline.h"
+#include "vulkan_vertex.h"
 #include <fstream>
 #include <iostream>
 #include <tuple>
 
 void pipeline_settings_t::populate_defaults()
 {
+    this->vertex_binding_descriptions.push_back(vertex_t::get_binding_description());
+    std::array<VkVertexInputAttributeDescription, 2> attribute_description = vertex_t::get_attribute_description();
+    this->vertex_attribute_descriptions.insert(this->vertex_attribute_descriptions.begin(), attribute_description.begin(), attribute_description.end());
+
     this->vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    this->vertex_input.vertexBindingDescriptionCount = 0;
-    this->vertex_input.vertexAttributeDescriptionCount = 0;
+    this->vertex_input.vertexBindingDescriptionCount = 1;
+    this->vertex_input.pVertexBindingDescriptions = this->vertex_binding_descriptions.data();
+    this->vertex_input.vertexAttributeDescriptionCount = static_cast<std::uint32_t>(this->vertex_attribute_descriptions.size());
+    this->vertex_input.pVertexAttributeDescriptions = this->vertex_attribute_descriptions.data();
 
     this->input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     this->input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;

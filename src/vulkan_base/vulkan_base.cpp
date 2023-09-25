@@ -385,8 +385,46 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
     return 0;
 }
 
+std::int32_t vulkan_context_t::add_pipeline(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings)
+{
+    graphics_pipeline_t* pipeline = new graphics_pipeline_t(&this->render_pass, this->swap_chain->extent);
+    if (pipeline->init(shaders, settings, this->device) != 0) return -1;
+    this->graphics_pipelines.push_back(pipeline);
+    return 0;
+}
+
+std::int32_t vulkan_context_t::set_active_pipeline(std::uint32_t index)
+{
+    if (index >= this->graphics_pipelines.size())
+    {
+        std::cerr << "Pipeline " << index << " does not exist!" << std::endl;
+        return -1;
+    }
+    this->current_pipeline = this->graphics_pipelines[index];
+    return 0;
+}
+
+std::int32_t vulkan_context_t::add_buffer(const buffer_settings_t& settings)
+{
+    buffer_t* buffer = new buffer_t(&this->physical_device);
+    if (buffer->init(settings, &this->device->device) != 0) return -1;
+    this->buffers.push_back(buffer);
+    return 0;
+}
+
+buffer_t* vulkan_context_t::get_buffer(std::uint32_t index)
+{
+    return this->buffers[index];
+}
+
 std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vulkan_context_t*)> func)
 {
+    if (this->current_pipeline == nullptr)
+    {
+        std::cerr << "No active pipeline set!" << std::endl;
+        return -1;
+    }
+
     vkWaitForFences(this->device->device, 1, &this->sync_objects.in_flight[this->current_frame], VK_TRUE, UINT64_MAX);
 
     std::uint32_t image_index;
@@ -411,7 +449,7 @@ std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vu
     vkResetCommandBuffer(this->command_buffers->command_buffers[this->current_frame], 0);
 
     recording_settings_t settings{};
-    settings.populate_defaults(this->render_pass, this->swap_chain_framebuffers[image_index], this->swap_chain->extent, this->graphics_pipeline->pipeline);
+    settings.populate_defaults(this->render_pass, this->swap_chain_framebuffers[image_index], this->swap_chain->extent, this->current_pipeline->pipeline);
     settings.draw_command = [&] (VkCommandBuffer command_buffer) { func(command_buffer, this); };
 
     if (this->command_buffers->record(this->current_frame, settings) != 0)
@@ -510,23 +548,24 @@ vulkan_context_t::vulkan_context_t(std::string name)
     render_pass_settings_t render_pass_settings;
     render_pass_settings.populate_defaults(this->swap_chain->format.format);
     if (create_render_pass(render_pass_settings) != 0) return;
-    this->graphics_pipeline = new graphics_pipeline_t(&(this->render_pass), this->swap_chain->extent);
     
-    pipeline_shaders_t shaders = { "./build/target/shaders/main.vert.spv", std::nullopt, "./build/target/shaders/main.frag.spv" };
-    pipeline_settings_t pipeline_settings;
-    pipeline_settings.populate_defaults();
-    if (this->graphics_pipeline->init(shaders, pipeline_settings, this->device) != 0) return;
     if (create_framebuffers() != 0) return;
     if (create_command_pool() != 0) return;
     
     this->command_buffers = new command_buffers_t();
     if (this->command_buffers->init(this->command_pool, &(this->device->device)) != 0) return;
     if (create_sync_objects() != 0) return;
+    
     this->initialized = true;
 }
 
 vulkan_context_t::~vulkan_context_t()
 {
+    for (buffer_t* buf : this->buffers)
+    {
+        delete buf;
+    }
+
     for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         vkDestroySemaphore(this->device->device, this->sync_objects.image_available[i], nullptr);
@@ -544,7 +583,10 @@ vulkan_context_t::~vulkan_context_t()
     }
     std::cout << "Destroying Framebuffer(s)!" << std::endl;
     
-    delete this->graphics_pipeline;
+    for (graphics_pipeline_t* pipeline : this->graphics_pipelines)
+    {
+        delete pipeline;
+    }
     
     vkDestroyRenderPass(this->device->device, this->render_pass, nullptr);
     std::cout << "Destroying Render Pass!" << std::endl;
