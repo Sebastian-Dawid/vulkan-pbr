@@ -20,16 +20,22 @@ int main()
         {{ 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
         {{ 0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}},
         {{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
-        {{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
         {{-0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}},
-        {{ 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
     };
 
-    buffer_settings_t buffer_settings;
-    buffer_settings.populate_defaults(static_cast<std::uint32_t>(vertices.size()));
-    if (vk_context.add_buffer(buffer_settings) != 0) return -1;
+    std::vector<std::uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
+
+    buffer_settings_t vertex_buffer_settings;
+    vertex_buffer_settings.populate_defaults(static_cast<std::uint32_t>(vertices.size()));
+    if (vk_context.add_buffer(vertex_buffer_settings) != 0) return -1;
     buffer_t* vertex_buffer = vk_context.get_buffer(0);
     vertex_buffer->set_data(vertices.data());
+
+    buffer_settings_t index_buffer_settings;
+    index_buffer_settings.populate_defaults(static_cast<std::uint32_t>(indices.size()), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+    if (vk_context.add_buffer(index_buffer_settings) != 0) return -1;
+    buffer_t* index_buffer = vk_context.get_buffer(1);
+    index_buffer->set_data(indices.data());
 
     std::function<void(VkCommandBuffer, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, vulkan_context_t* context)
     {
@@ -50,8 +56,9 @@ int main()
         VkBuffer vertex_buffers[] = { vertex_buffer->buffer };
         VkDeviceSize offsets[] = { 0 };
         vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
-
-        vkCmdDraw(command_buffer, static_cast<std::uint32_t>(vertices.size()), 1, 0, 0);
+        vkCmdBindIndexBuffer(command_buffer, index_buffer->buffer, 0, VK_INDEX_TYPE_UINT16);
+        
+        vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
     };
 
     vk_context.main_loop([&]

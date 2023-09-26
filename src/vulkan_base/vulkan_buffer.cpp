@@ -3,10 +3,10 @@
 #include <cstring>
 #include <iostream>
 
-void buffer_settings_t::populate_defaults(std::uint32_t nr_vertices)
+void buffer_settings_t::populate_defaults(std::uint32_t nr_vertices, VkBufferUsageFlags usage)
 {
     this->size = sizeof(vertex_t) * nr_vertices;
-    this->usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    this->usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage;
     this->sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
     this->memory_offset = 0;
     this->map_memory_flags = 0;
@@ -28,40 +28,27 @@ std::optional<std::uint32_t> buffer_t::find_memory_type(std::uint32_t type_filte
     return std::nullopt;
 }
 
-void buffer_t::set_data(void* cpu_data)
-{
-    if (this->device == nullptr)
-    {
-        std::cerr << "No buffer initialized!" << std::endl;
-        return;
-    }
-    void* gpu_data;
-    vkMapMemory(*this->device, this->memory, this->settings->memory_offset, this->settings->size, this->settings->map_memory_flags, &gpu_data);
-    std::memcpy(gpu_data, cpu_data, (std::size_t) this->settings->size);
-    vkUnmapMemory(*this->device, this->memory);
-}
-
-std::int32_t buffer_t::init(const buffer_settings_t& settings, const VkDevice* device)
+std::int32_t buffer_t::create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& memory)
 {
     VkBufferCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    create_info.size = settings.size;
-    create_info.usage = settings.usage;
-    create_info.sharingMode = settings.sharing_mode;
+    create_info.size = size;
+    create_info.usage = usage;
+    create_info.sharingMode = this->settings->sharing_mode;
 
-    if (vkCreateBuffer(*device, &create_info, this->allocator, &this->buffer) != VK_SUCCESS)
+    if (vkCreateBuffer(this->device->device, &create_info, this->allocator, &buffer) != VK_SUCCESS)
     {
         std::cerr << "Failed to create buffer!" << std::endl;
         return -1;
     }
 
     VkMemoryRequirements mem_requirements;
-    vkGetBufferMemoryRequirements(*device, this->buffer, &mem_requirements);
+    vkGetBufferMemoryRequirements(this->device->device, buffer, &mem_requirements);
 
     VkMemoryAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc_info.allocationSize = mem_requirements.size;
-    std::optional<std::uint32_t> idx = find_memory_type(mem_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    std::optional<std::uint32_t> idx = find_memory_type(mem_requirements.memoryTypeBits, properties);
     if (!idx.has_value())
     {
         std::cerr << "Failed to find suitable memory type!" << std::endl;
@@ -69,29 +56,105 @@ std::int32_t buffer_t::init(const buffer_settings_t& settings, const VkDevice* d
     }
     alloc_info.memoryTypeIndex = idx.value();
 
-    if (vkAllocateMemory(*device, &alloc_info, nullptr, &this->memory) != VK_SUCCESS)
+    if (vkAllocateMemory(this->device->device, &alloc_info, nullptr, &memory) != VK_SUCCESS)
     {
         std::cerr << "Failed to allocate buffer memory!" << std::endl;
         return -1;
     }
 
-    vkBindBufferMemory(*device, this->buffer, this->memory, settings.memory_offset);
+    vkBindBufferMemory(this->device->device, buffer, memory, this->settings->memory_offset);
+    
+    return 0;
+}
+
+void buffer_t::copy_buffer(VkBuffer& src_buffer, VkBuffer& dst_buffer, VkDeviceSize size)
+{
+    VkCommandBufferAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandPool = *this->command_pool;
+    alloc_info.commandBufferCount = 1;
+
+    VkCommandBuffer command_buffer;
+    vkAllocateCommandBuffers(this->device->device, &alloc_info, &command_buffer);
+
+    VkCommandBufferBeginInfo begin_info{};
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(command_buffer, &begin_info);
+
+    VkBufferCopy copy_region{};
+    copy_region.size = size;
+    vkCmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
+
+    vkEndCommandBuffer(command_buffer);
+    
+    VkSubmitInfo submit_info{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &command_buffer;
+
+    vkQueueSubmit(this->device->graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+    vkQueueWaitIdle(this->device->graphics_queue);
+
+    vkFreeCommandBuffers(this->device->device, *this->command_pool, 1, &command_buffer);
+}
+
+std::int32_t buffer_t::set_data(void* cpu_data)
+{
+    if (this->device == nullptr)
+    {
+        std::cerr << "No buffer initialized!" << std::endl;
+        return -1;
+    }
+
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_memory;
+    if (create_buffer(settings->size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                staging_buffer, staging_memory) != 0)
+    {
+        return -1;
+    }
+
+    void* gpu_data;
+    vkMapMemory(this->device->device, staging_memory, this->settings->memory_offset, this->settings->size, this->settings->map_memory_flags, &gpu_data);
+    std::memcpy(gpu_data, cpu_data, (std::size_t) this->settings->size);
+    vkUnmapMemory(this->device->device, staging_memory);
+
+    copy_buffer(staging_buffer, this->buffer, this->settings->size);
+
+    vkDestroyBuffer(this->device->device, staging_buffer, this->allocator);
+    vkFreeMemory(this->device->device, staging_memory, nullptr);
+
+    return 0;
+}
+
+std::int32_t buffer_t::init(const buffer_settings_t& settings, const logical_device_t* device)
+{
     this->device = device;
     this->settings = &settings;
+
+    if (create_buffer(settings.size, settings.usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, this->buffer, this->memory) != 0)
+    {
+        this->device = nullptr;
+        return -1;
+    }
 
     return 0;    
 }
 
-buffer_t::buffer_t(const VkPhysicalDevice* physical_device)
+buffer_t::buffer_t(const VkPhysicalDevice* physical_device, const VkCommandPool* command_pool)
 {
     this->physical_device = physical_device;
+    this->command_pool = command_pool;
 }
 
 buffer_t::~buffer_t()
 {
     if (this->device == nullptr) return;
-    vkDestroyBuffer(*(this->device), this->buffer, this->allocator);
+    vkDestroyBuffer(this->device->device, this->buffer, this->allocator);
     std::cout << "Destroying Buffer!" << std::endl;
-    vkFreeMemory(*(this->device), this->memory, nullptr);
+    vkFreeMemory(this->device->device, this->memory, nullptr);
     std::cout << "Freeing Buffer Memory!" << std::endl;
 }

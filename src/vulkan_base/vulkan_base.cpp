@@ -406,8 +406,8 @@ std::int32_t vulkan_context_t::set_active_pipeline(std::uint32_t index)
 
 std::int32_t vulkan_context_t::add_buffer(const buffer_settings_t& settings)
 {
-    buffer_t* buffer = new buffer_t(&this->physical_device);
-    if (buffer->init(settings, &this->device->device) != 0) return -1;
+    buffer_t* buffer = new buffer_t(&this->physical_device, &this->command_pool);
+    if (buffer->init(settings, this->device) != 0) return -1;
     this->buffers.push_back(buffer);
     return 0;
 }
