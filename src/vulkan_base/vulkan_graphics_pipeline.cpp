@@ -4,7 +4,7 @@
 #include <iostream>
 #include <tuple>
 
-void pipeline_settings_t::populate_defaults()
+void pipeline_settings_t::populate_defaults(const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts)
 {
     this->vertex_binding_descriptions.push_back(vertex_t::get_binding_description());
     std::array<VkVertexInputAttributeDescription, 2> attribute_description = vertex_t::get_attribute_description();
@@ -30,7 +30,7 @@ void pipeline_settings_t::populate_defaults()
     this->rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     this->rasterizer.lineWidth = 1.0f;
     this->rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    this->rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    this->rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     this->rasterizer.depthBiasEnable = VK_FALSE;
 
     this->multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
@@ -55,6 +55,8 @@ void pipeline_settings_t::populate_defaults()
     this->dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     this->dynamic_state.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
     this->dynamic_state.pDynamicStates = dynamic_states.data();
+
+    this->descriptor_set_layouts = descriptor_set_layouts;
 }
 
 std::optional<std::vector<char>> read_file(const std::string& filename)
@@ -130,6 +132,8 @@ std::int32_t graphics_pipeline_t::init(const pipeline_shaders_t& shaders, const 
 
     VkPipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipeline_layout_info.setLayoutCount = static_cast<std::uint32_t>(settings.descriptor_set_layouts.size());
+    pipeline_layout_info.pSetLayouts = settings.descriptor_set_layouts.data();
 
     if (vkCreatePipelineLayout(device->device, &pipeline_layout_info, nullptr, &(this->pipeline_layout)) != VK_SUCCESS)
     {

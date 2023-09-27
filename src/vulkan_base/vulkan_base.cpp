@@ -412,9 +412,33 @@ std::int32_t vulkan_context_t::add_buffer(const buffer_settings_t& settings)
     return 0;
 }
 
-buffer_t* vulkan_context_t::get_buffer(std::uint32_t index)
+std::int32_t vulkan_context_t::add_descriptor_set_layout(const VkDescriptorSetLayoutBinding& layout_binding)
 {
-    return this->buffers[index];
+    VkDescriptorSetLayout set_layout;
+    VkDescriptorSetLayoutCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    create_info.bindingCount = 1;
+    create_info.pBindings = &layout_binding;
+    
+    if (vkCreateDescriptorSetLayout(this->device->device, &create_info, nullptr, &set_layout) != VK_SUCCESS)
+    {
+        std::cerr << "Failed to create descriptor set layout" << std::endl;
+        return -1;
+    }
+
+    this->descriptor_set_layouts.push_back(std::make_tuple(set_layout, layout_binding.descriptorType));
+    
+    descriptor_pool_t* descriptor_pool = new descriptor_pool_t();
+    if (descriptor_pool->init(layout_binding.descriptorType, std::get<0>(this->descriptor_set_layouts.back()), &this->device->device) != 0) return -1;
+    this->descriptor_pools.push_back(descriptor_pool);
+    
+    return 0;
+}
+
+void vulkan_context_t::bind_descriptor_sets(VkCommandBuffer command_buffer, std::uint32_t pool_index, std::uint32_t first_set)
+{
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, this->current_pipeline->pipeline_layout, first_set, 1,
+            &this->descriptor_pools[0]->sets[this->current_frame], 0, nullptr);
 }
 
 std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vulkan_context_t*)> func)
@@ -555,16 +579,28 @@ vulkan_context_t::vulkan_context_t(std::string name)
     this->command_buffers = new command_buffers_t();
     if (this->command_buffers->init(this->command_pool, &(this->device->device)) != 0) return;
     if (create_sync_objects() != 0) return;
-    
+
     this->initialized = true;
 }
 
 vulkan_context_t::~vulkan_context_t()
 {
+
     for (buffer_t* buf : this->buffers)
     {
         delete buf;
     }
+
+    for (descriptor_pool_t* pool : this->descriptor_pools)
+    {
+        delete pool;
+    }
+
+    for (std::tuple<VkDescriptorSetLayout, VkDescriptorType> layout : this->descriptor_set_layouts)
+    {
+        vkDestroyDescriptorSetLayout(this->device->device, std::get<0>(layout), nullptr);
+    }
+    std::cout << "Destroying Descriptor Set Layouts!" << std::endl;
 
     for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
@@ -610,6 +646,28 @@ vulkan_context_t::~vulkan_context_t()
 VkExtent2D vulkan_context_t::get_swap_chain_extent()
 {
     return this->swap_chain->extent;
+}
+
+std::vector<VkDescriptorSetLayout> vulkan_context_t::get_descriptor_set_layouts()
+{
+    std::vector<VkDescriptorSetLayout> result;
+    std::for_each(this->descriptor_set_layouts.begin(), this->descriptor_set_layouts.end(), [&] (const auto& e) { result.push_back(std::get<0>(e)); });
+    return result;
+}
+
+std::uint32_t vulkan_context_t::get_current_frame()
+{
+    return this->current_frame;
+}
+
+buffer_t* vulkan_context_t::get_buffer(std::uint32_t index)
+{
+    return this->buffers[index];
+}
+
+std::vector<descriptor_pool_t*>* vulkan_context_t::get_descriptor_pools()
+{
+    return &this->descriptor_pools;
 }
 
 void vulkan_context_t::framebuffer_resize_callback(GLFWwindow* window, std::int32_t width, std::int32_t height)

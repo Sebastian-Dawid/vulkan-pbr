@@ -29,8 +29,9 @@ struct pipeline_settings_t
     VkPipelineColorBlendStateCreateInfo color_blending{};
     std::vector<VkDynamicState> dynamic_states;
     VkPipelineDynamicStateCreateInfo dynamic_state{};
+    std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
 
-    void populate_defaults();
+    void populate_defaults(const std::vector<VkDescriptorSetLayout>& descriptor_set_layputs);
 };
 
 class graphics_pipeline_t

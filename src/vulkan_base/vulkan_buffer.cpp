@@ -108,6 +108,26 @@ std::int32_t buffer_t::set_data(void* cpu_data)
         std::cerr << "No buffer initialized!" << std::endl;
         return -1;
     }
+    
+    vkMapMemory(this->device->device, this->memory, this->settings->memory_offset, this->settings->size, this->settings->map_memory_flags, &this->mapped_memory);
+    std::memcpy(this->mapped_memory, cpu_data, (std::size_t) this->settings->size);
+    vkUnmapMemory(this->device->device, this->memory);
+
+    return 0;
+}
+
+void buffer_t::map_memory()
+{
+    vkMapMemory(this->device->device, this->memory, this->settings->memory_offset, this->settings->size, this->settings->map_memory_flags, &this->mapped_memory);
+}
+
+std::int32_t buffer_t::set_staged_data(void* cpu_data)
+{
+    if (this->device == nullptr)
+    {
+        std::cerr << "No buffer initialized!" << std::endl;
+        return -1;
+    }
 
     VkBuffer staging_buffer;
     VkDeviceMemory staging_memory;
@@ -135,7 +155,7 @@ std::int32_t buffer_t::init(const buffer_settings_t& settings, const logical_dev
     this->device = device;
     this->settings = &settings;
 
-    if (create_buffer(settings.size, settings.usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, this->buffer, this->memory) != 0)
+    if (create_buffer(settings.size, settings.usage, settings.memory_properties, this->buffer, this->memory) != 0)
     {
         this->device = nullptr;
         return -1;
@@ -157,4 +177,9 @@ buffer_t::~buffer_t()
     std::cout << "Destroying Buffer!" << std::endl;
     vkFreeMemory(this->device->device, this->memory, nullptr);
     std::cout << "Freeing Buffer Memory!" << std::endl;
+}
+
+buffer_settings_t buffer_t::get_settings()
+{
+    return *this->settings;
 }

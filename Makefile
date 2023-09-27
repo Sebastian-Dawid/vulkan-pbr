@@ -55,7 +55,7 @@ $(IMGUI_BUILD)/%.cpp.o: %.cpp
 	mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(IMGUI_CFLAGS) -c $< -o $@
 
-.PHONY: test clean
+.PHONY: test clean release build_debug build_release
 
 test: CFLAGS += -g
 test: clean $(BUILD_DIR)/$(TARGET_EXEC)
@@ -66,6 +66,12 @@ clean:
 
 release: CFLAGS += -DNDEBUG -O3
 release: clean test
+
+build_debug: CFLAGS += -g
+build_debug: clean $(BUILD_DIR)/$(TARGET_EXEC)
+
+build_release: CFLAGS += -DNDEBUG -O3
+build_release: clean $(BUILD_DIR)/$(TARGET_EXEC)
 
 -include $(DEPS)
 -include $(IMGUI_DEPS)
