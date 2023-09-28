@@ -27,7 +27,6 @@ class buffer_t
         const VkAllocationCallbacks* allocator = nullptr;
         const buffer_settings_t* settings;
 
-        std::optional<std::uint32_t> find_memory_type(std::uint32_t type_filter, VkMemoryPropertyFlags properties);
         std::int32_t create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& memory);
         void copy_buffer(VkBuffer& src_buffer, VkBuffer& dst_buffer, VkDeviceSize size);
 
@@ -44,3 +43,5 @@ class buffer_t
         buffer_t(const VkPhysicalDevice* physical_device, const VkCommandPool* command_pool);
         ~buffer_t();
 };
+
+std::optional<std::uint32_t> find_memory_type(std::uint32_t type_filter, VkPhysicalDevice physical_device, VkMemoryPropertyFlags properties);

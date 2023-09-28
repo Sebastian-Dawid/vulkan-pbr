@@ -1,39 +1,77 @@
 #include "vulkan_descriptor_pool.h"
+#include "vulkan_buffer.h"
 #include "vulkan_constants.h"
+#include "vulkan_image.h"
 #include <iostream>
+#include <tuple>
 
-void descriptor_pool_t::configure_descriptors(std::uint32_t binding, VkBuffer buffer, VkDeviceSize size)
+void descriptor_pool_t::configure_descriptors(std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> data)
 {
-    for (VkDescriptorSet set : this->sets)
+    for (std::uint32_t i = 0; i < this->sets.size(); ++i)
     {
-        VkDescriptorBufferInfo buffer_info{};
-        buffer_info.buffer = buffer;
-        buffer_info.range = size;
-        buffer_info.offset = 0;
+        std::vector<VkWriteDescriptorSet> descriptor_writes;
+        std::vector<VkDescriptorBufferInfo> buffer_infos;
+        std::vector<VkDescriptorImageInfo> image_infos;
+        for (const auto& e : data)
+        {
+            VkWriteDescriptorSet descriptor_write{};
+            descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptor_write.dstSet = this->sets[i];
+            descriptor_write.dstBinding = std::get<0>(e);
+            descriptor_write.dstArrayElement = 0;
+            descriptor_write.descriptorType = std::get<3>(e);
+            descriptor_write.descriptorCount = (std::get<2>(e) == nullptr) ? 0 : 1;
+            
+            switch (std::get<3>(e))
+            {
+                case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+                    {
+                        image_t* img = (image_t*) std::get<2>(e) + std::get<4>(e) * i;
+                        VkDescriptorImageInfo image_info{};
+                        image_info.sampler = img->sampler;
+                        image_info.imageView = img->view;
+                        image_info.imageLayout = img->layout;
+                        image_infos.push_back(image_info);
+                    }
+                    descriptor_write.pImageInfo = &image_infos.back();
+                    break;
+                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+                    {
+                        buffer_t* buf = *((buffer_t**) std::get<2>(e) + std::get<4>(e) * i);
+                        VkDescriptorBufferInfo buffer_info{};
+                        buffer_info.buffer = buf->buffer;
+                        buffer_info.range = std::get<1>(e);
+                        buffer_info.offset = 0;
+                        buffer_infos.push_back(buffer_info);
+                    }
+                    descriptor_write.pBufferInfo = &buffer_infos.back();
+                    break;
+                default:
+                    break;
+            }
 
-        VkWriteDescriptorSet descriptor_write{};
-        descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptor_write.dstSet = set;
-        descriptor_write.dstBinding = binding;
-        descriptor_write.dstArrayElement = 0;
-        descriptor_write.descriptorType = this->type;
-        descriptor_write.descriptorCount = 1;
-        descriptor_write.pBufferInfo = &buffer_info;
+            descriptor_writes.push_back(descriptor_write);
+        }
 
-        vkUpdateDescriptorSets(*this->device, 1, &descriptor_write, 0, nullptr);
+        vkUpdateDescriptorSets(*this->device, static_cast<std::uint32_t>(descriptor_writes.size()), descriptor_writes.data(), 0, nullptr);
     }
 }
 
-std::int32_t descriptor_pool_t::init(VkDescriptorType type, VkDescriptorSetLayout layout, const VkDevice* device)
+std::int32_t descriptor_pool_t::init(VkDescriptorSetLayout layout, std::vector<VkDescriptorType> types, const VkDevice* device)
 {
-    VkDescriptorPoolSize pool_size{};
-    pool_size.type = type;
-    pool_size.descriptorCount = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    std::vector<VkDescriptorPoolSize> sizes;
+    for (const VkDescriptorType& type : types)
+    {
+        VkDescriptorPoolSize pool_size{};
+        pool_size.type = type;
+        pool_size.descriptorCount = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        sizes.push_back(pool_size);
+    }
 
     VkDescriptorPoolCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    create_info.poolSizeCount = 1;
-    create_info.pPoolSizes = &pool_size;
+    create_info.poolSizeCount = static_cast<std::uint32_t>(sizes.size());
+    create_info.pPoolSizes = sizes.data();
     create_info.maxSets = static_cast<std::uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
     if (vkCreateDescriptorPool(*device, &create_info, nullptr, &this->pool) != VK_SUCCESS)
@@ -56,7 +94,6 @@ std::int32_t descriptor_pool_t::init(VkDescriptorType type, VkDescriptorSetLayou
         return -1;
     }
 
-    this->type = type;
     this->device = device;
     return 0;
 }

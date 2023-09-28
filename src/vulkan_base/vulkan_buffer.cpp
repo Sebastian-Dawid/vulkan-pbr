@@ -1,4 +1,5 @@
 #include "vulkan_buffer.h"
+#include "vulkan_command_buffer.h"
 #include "vulkan_vertex.h"
 #include <cstring>
 #include <iostream>
@@ -12,10 +13,10 @@ void buffer_settings_t::populate_defaults(std::uint32_t nr_vertices, VkBufferUsa
     this->map_memory_flags = 0;
 }
 
-std::optional<std::uint32_t> buffer_t::find_memory_type(std::uint32_t type_filter, VkMemoryPropertyFlags properties)
+std::optional<std::uint32_t> find_memory_type(std::uint32_t type_filter, VkPhysicalDevice physical_device, VkMemoryPropertyFlags properties)
 {
     VkPhysicalDeviceMemoryProperties mem_properties;
-    vkGetPhysicalDeviceMemoryProperties(*(this->physical_device), &mem_properties);
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
 
     for (std::uint32_t i = 0; i < mem_properties.memoryTypeCount; ++i)
     {
@@ -48,7 +49,7 @@ std::int32_t buffer_t::create_buffer(VkDeviceSize size, VkBufferUsageFlags usage
     VkMemoryAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc_info.allocationSize = mem_requirements.size;
-    std::optional<std::uint32_t> idx = find_memory_type(mem_requirements.memoryTypeBits, properties);
+    std::optional<std::uint32_t> idx = find_memory_type(mem_requirements.memoryTypeBits, *this->physical_device, properties);
     if (!idx.has_value())
     {
         std::cerr << "Failed to find suitable memory type!" << std::endl;
@@ -69,36 +70,13 @@ std::int32_t buffer_t::create_buffer(VkDeviceSize size, VkBufferUsageFlags usage
 
 void buffer_t::copy_buffer(VkBuffer& src_buffer, VkBuffer& dst_buffer, VkDeviceSize size)
 {
-    VkCommandBufferAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    alloc_info.commandPool = *this->command_pool;
-    alloc_info.commandBufferCount = 1;
-
-    VkCommandBuffer command_buffer;
-    vkAllocateCommandBuffers(this->device->device, &alloc_info, &command_buffer);
-
-    VkCommandBufferBeginInfo begin_info{};
-    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    vkBeginCommandBuffer(command_buffer, &begin_info);
+    VkCommandBuffer command_buffer = begin_single_time_commands(this->device->device, *this->command_pool);
 
     VkBufferCopy copy_region{};
     copy_region.size = size;
     vkCmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
 
-    vkEndCommandBuffer(command_buffer);
-    
-    VkSubmitInfo submit_info{};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &command_buffer;
-
-    vkQueueSubmit(this->device->graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
-    vkQueueWaitIdle(this->device->graphics_queue);
-
-    vkFreeCommandBuffers(this->device->device, *this->command_pool, 1, &command_buffer);
+    end_single_time_commands(*this->command_pool, command_buffer, this->device->device, this->device->graphics_queue);
 }
 
 std::int32_t buffer_t::set_data(void* cpu_data)

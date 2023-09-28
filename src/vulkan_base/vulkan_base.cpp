@@ -170,7 +170,7 @@ std::uint32_t rate_device_suitablity(const VkPhysicalDevice& physical_device, Vk
 
     score += device_properties.limits.maxImageDimension2D;
 
-    if (!device_features.geometryShader)
+    if (!device_features.geometryShader || !device_features.samplerAnisotropy)
     {
         return 0;
     }
@@ -412,24 +412,34 @@ std::int32_t vulkan_context_t::add_buffer(const buffer_settings_t& settings)
     return 0;
 }
 
-std::int32_t vulkan_context_t::add_descriptor_set_layout(const VkDescriptorSetLayoutBinding& layout_binding)
+std::int32_t vulkan_context_t::add_image(const std::string& path, const image_settings_t& settings)
+{
+    image_t* image = new image_t(&this->physical_device, &this->command_pool);
+    if (image->init_texture(path, settings, this->device) != 0) return -1;
+    this->images.push_back(image);
+    return 0;
+}
+
+std::int32_t vulkan_context_t::add_descriptor_set_layout(const std::vector<VkDescriptorSetLayoutBinding> layout_bindings)
 {
     VkDescriptorSetLayout set_layout;
     VkDescriptorSetLayoutCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    create_info.bindingCount = 1;
-    create_info.pBindings = &layout_binding;
-    
+    create_info.bindingCount = static_cast<std::uint32_t>(layout_bindings.size());
+    create_info.pBindings = layout_bindings.data();
+    std::vector<VkDescriptorType> types;
+    std::for_each(layout_bindings.begin(), layout_bindings.end(), [&](VkDescriptorSetLayoutBinding e){ types.push_back(e.descriptorType); });
+
     if (vkCreateDescriptorSetLayout(this->device->device, &create_info, nullptr, &set_layout) != VK_SUCCESS)
     {
         std::cerr << "Failed to create descriptor set layout" << std::endl;
         return -1;
     }
 
-    this->descriptor_set_layouts.push_back(std::make_tuple(set_layout, layout_binding.descriptorType));
+    this->descriptor_set_layouts.push_back(set_layout);
     
     descriptor_pool_t* descriptor_pool = new descriptor_pool_t();
-    if (descriptor_pool->init(layout_binding.descriptorType, std::get<0>(this->descriptor_set_layouts.back()), &this->device->device) != 0) return -1;
+    if (descriptor_pool->init(this->descriptor_set_layouts.back(), types, &this->device->device) != 0) return -1;
     this->descriptor_pools.push_back(descriptor_pool);
     
     return 0;
@@ -591,14 +601,19 @@ vulkan_context_t::~vulkan_context_t()
         delete buf;
     }
 
+    for (image_t* img : this->images)
+    {
+        delete img;
+    }
+
     for (descriptor_pool_t* pool : this->descriptor_pools)
     {
         delete pool;
     }
 
-    for (std::tuple<VkDescriptorSetLayout, VkDescriptorType> layout : this->descriptor_set_layouts)
+    for (VkDescriptorSetLayout layout : this->descriptor_set_layouts)
     {
-        vkDestroyDescriptorSetLayout(this->device->device, std::get<0>(layout), nullptr);
+        vkDestroyDescriptorSetLayout(this->device->device, layout, nullptr);
     }
     std::cout << "Destroying Descriptor Set Layouts!" << std::endl;
 
@@ -650,9 +665,7 @@ VkExtent2D vulkan_context_t::get_swap_chain_extent()
 
 std::vector<VkDescriptorSetLayout> vulkan_context_t::get_descriptor_set_layouts()
 {
-    std::vector<VkDescriptorSetLayout> result;
-    std::for_each(this->descriptor_set_layouts.begin(), this->descriptor_set_layouts.end(), [&] (const auto& e) { result.push_back(std::get<0>(e)); });
-    return result;
+    return this->descriptor_set_layouts;
 }
 
 std::uint32_t vulkan_context_t::get_current_frame()
@@ -663,6 +676,11 @@ std::uint32_t vulkan_context_t::get_current_frame()
 buffer_t* vulkan_context_t::get_buffer(std::uint32_t index)
 {
     return this->buffers[index];
+}
+
+image_t* vulkan_context_t::get_image(std::uint32_t index)
+{
+    return this->images[index];
 }
 
 std::vector<descriptor_pool_t*>* vulkan_context_t::get_descriptor_pools()

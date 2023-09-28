@@ -11,10 +11,10 @@ struct ubo_t
 };
 
 std::vector<vertex_t> vertices = {
-    {{ 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{ 0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}},
+    {{ 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{ 0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+    {{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{-0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}},
 };
 
 std::vector<std::uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
@@ -41,6 +41,7 @@ int main()
     buffer_t* index_buffer = vk_context.get_buffer(1);
     index_buffer->set_staged_data(indices.data());
 
+    std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> descriptor_config;
     std::vector<buffer_t*> ubo_buffers;
     for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
@@ -53,6 +54,12 @@ int main()
         ubo_buffer->map_memory();
         ubo_buffers.push_back(ubo_buffer);
     }
+    descriptor_config.push_back(std::make_tuple(0, sizeof(ubo_t), &ubo_buffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
+
+    image_settings_t image_settings;
+    if (vk_context.add_image("./textures/texture.jpg", image_settings) != 0) return -1;
+    image_t* img = vk_context.get_image(0);
+    descriptor_config.push_back(std::make_tuple(1, 0, img, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
 
     vk_context.add_descriptor_set_layout();
     pipeline_shaders_t shaders = { "./build/target/shaders/main.vert.spv", std::nullopt, "./build/target/shaders/main.frag.spv" };
@@ -62,10 +69,7 @@ int main()
     vk_context.set_active_pipeline(0);
 
     descriptor_pool_t* pool = (*vk_context.get_descriptor_pools())[0];
-    for (buffer_t* buf : ubo_buffers)
-    {
-        pool->configure_descriptors(0, buf->buffer, buf->get_settings().size);
-    }
+    pool->configure_descriptors(descriptor_config);
 
     std::function<void(VkCommandBuffer, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, vulkan_context_t* context)
     {

@@ -64,3 +64,38 @@ command_buffers_t::command_buffers_t()
 
 command_buffers_t::~command_buffers_t()
 {}
+
+VkCommandBuffer begin_single_time_commands(VkDevice device, VkCommandPool pool)
+{
+    VkCommandBufferAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandPool = pool;
+    alloc_info.commandBufferCount = 1;
+
+    VkCommandBuffer buffer;
+    vkAllocateCommandBuffers(device, &alloc_info, &buffer);
+
+    VkCommandBufferBeginInfo begin_info{};
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(buffer, &begin_info);
+
+    return buffer;
+}
+
+void end_single_time_commands(VkCommandPool pool, VkCommandBuffer command_buffer, VkDevice device, VkQueue queue)
+{
+    vkEndCommandBuffer(command_buffer);
+
+    VkSubmitInfo submit_info{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &command_buffer;
+
+    vkQueueSubmit(queue, 1, &submit_info, VK_NULL_HANDLE);
+    vkQueueWaitIdle(queue);
+
+    vkFreeCommandBuffers(device, pool, 1, &command_buffer);
+}

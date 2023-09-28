@@ -1,7 +1,5 @@
 #pragma once
 
-#include "vulkan_constants.h"
-#include "vulkan_descriptor_pool.h"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -11,6 +9,9 @@
 #include "vulkan_graphics_pipeline.h"
 #include "vulkan_command_buffer.h"
 #include "vulkan_buffer.h"
+#include "vulkan_constants.h"
+#include "vulkan_descriptor_pool.h"
+#include "vulkan_image.h"
 
 #include <string>
 
@@ -40,7 +41,8 @@ class vulkan_context_t
         command_buffers_t* command_buffers;
         std::uint32_t current_frame = 0;
         std::vector<buffer_t*> buffers;
-        std::vector<std::tuple<VkDescriptorSetLayout, VkDescriptorType>> descriptor_set_layouts;
+        std::vector<image_t*> images;
+        std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
         std::vector<descriptor_pool_t*> descriptor_pools;
 
         struct
@@ -69,11 +71,13 @@ class vulkan_context_t
         bool framebuffer_resized = false;
         bool initialized = false;
 
-        std::int32_t add_descriptor_set_layout(const VkDescriptorSetLayoutBinding& layout_binding = UBO_LAYOUT_BINDING);
+        std::int32_t add_descriptor_set_layout(const std::vector<VkDescriptorSetLayoutBinding> layout_bindings = { UBO_LAYOUT_BINDING, SAMPLER_LAYOUT_BINDING });
         std::int32_t add_pipeline(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings);
         std::int32_t set_active_pipeline(std::uint32_t index);
         std::int32_t add_buffer(const buffer_settings_t& settings);
+        std::int32_t add_image(const std::string& path, const image_settings_t& settings);
         buffer_t* get_buffer(std::uint32_t index);
+        image_t* get_image(std::uint32_t index);
         std::vector<VkDescriptorSetLayout> get_descriptor_set_layouts();
         std::uint32_t get_current_frame();
         std::vector<descriptor_pool_t*>* get_descriptor_pools();

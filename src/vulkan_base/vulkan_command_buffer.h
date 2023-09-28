@@ -25,3 +25,6 @@ class command_buffers_t
         command_buffers_t();
         ~command_buffers_t();
 };
+
+VkCommandBuffer begin_single_time_commands(VkDevice device, VkCommandPool pool);
+void end_single_time_commands(VkCommandPool pool, VkCommandBuffer command_buffer, VkDevice device, VkQueue queue);
