@@ -483,7 +483,7 @@ std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vu
     vkResetCommandBuffer(this->command_buffers->command_buffers[this->current_frame], 0);
 
     recording_settings_t settings{};
-    settings.populate_defaults(this->render_pass, this->swap_chain_framebuffers[image_index], this->swap_chain->extent, this->current_pipeline->pipeline);
+    settings.populate_defaults(this->render_pass, this->swap_chain_framebuffers[image_index], this->swap_chain->extent, this->current_pipeline->pipeline, CLEAR_COLOR);
     settings.draw_command = [&] (VkCommandBuffer command_buffer) { func(command_buffer, this); };
 
     if (this->command_buffers->record(this->current_frame, settings) != 0)

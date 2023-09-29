@@ -13,7 +13,7 @@ struct recording_settings_t
     VkPipeline pipeline;
     std::function<void(VkCommandBuffer)> draw_command;
 
-    void populate_defaults(VkRenderPass render_pass, VkFramebuffer framebuffer, VkExtent2D extent, VkPipeline pipeline);
+    void populate_defaults(VkRenderPass render_pass, VkFramebuffer framebuffer, VkExtent2D extent, VkPipeline pipeline, const VkClearValue& clear_color);
 };
 
 class command_buffers_t
