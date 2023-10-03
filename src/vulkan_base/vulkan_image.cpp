@@ -301,6 +301,7 @@ std::int32_t image_t::init_depth_buffer(image_settings_t settings, const VkExten
     this->height = extent.height;
     this->format = settings.format;
     this->layout = settings.layout;
+    this->sampler = VK_NULL_HANDLE;
 
     create_image_view(this->view, this->image, settings.format, device->device, VK_IMAGE_ASPECT_DEPTH_BIT);
     transition_image_layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);

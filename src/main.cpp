@@ -1,5 +1,6 @@
 #include "vulkan_base/vulkan_base.h"
 #include "vulkan_base/vulkan_vertex.h"
+#include "model_base/model_base.h"
 #include <chrono>
 #include <cstring>
 
@@ -8,23 +9,6 @@ struct ubo_t
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 projection;
-};
-
-std::vector<vertex_t> vertices = {
-    {{ 0.5f, -0.5f,  0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-    {{ 0.5f,  0.5f,  0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
-    {{-0.5f,  0.5f,  0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-    {{-0.5f, -0.5f,  0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}},
-    
-    {{ 0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-    {{ 0.5f,  0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
-    {{-0.5f,  0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-    {{-0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}},
-};
-
-std::vector<std::uint16_t> indices = {
-    0, 1, 2, 2, 3, 0,
-    4, 5, 6, 6, 7, 4
 };
 
 int main()
@@ -37,17 +21,12 @@ int main()
         return -1;
     }
 
-    buffer_settings_t vertex_buffer_settings;
-    vertex_buffer_settings.populate_defaults(static_cast<std::uint32_t>(vertices.size()));
-    if (vk_context.add_buffer(vertex_buffer_settings) != 0) return -1;
-    buffer_t* vertex_buffer = vk_context.get_buffer(0);
-    vertex_buffer->set_staged_data(vertices.data());
-
-    buffer_settings_t index_buffer_settings;
-    index_buffer_settings.populate_defaults(static_cast<std::uint32_t>(indices.size()), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-    if (vk_context.add_buffer(index_buffer_settings) != 0) return -1;
-    buffer_t* index_buffer = vk_context.get_buffer(1);
-    index_buffer->set_staged_data(indices.data());
+    model_t model("./models/viking_room/viking_room.obj");
+    if (!model.is_initialized()) return -1;
+    auto bufs = model.set_up_buffer(&vk_context);
+    if (!bufs.has_value()) return -1;
+    buffer_t* vertex_buffer = std::get<0>(bufs.value());
+    buffer_t* index_buffer = std::get<1>(bufs.value());
 
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> descriptor_config;
     std::vector<buffer_t*> ubo_buffers;
@@ -65,7 +44,7 @@ int main()
     descriptor_config.push_back(std::make_tuple(0, sizeof(ubo_t), &ubo_buffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
 
     image_settings_t image_settings;
-    if (vk_context.add_image("./textures/texture.jpg", image_settings) != 0) return -1;
+    if (vk_context.add_image("./models/viking_room/viking_room.png", image_settings) != 0) return -1;
     image_t* img = vk_context.get_image(0);
     descriptor_config.push_back(std::make_tuple(1, 0, img, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
 
@@ -108,10 +87,10 @@ int main()
         VkBuffer vertex_buffers[] = { vertex_buffer->buffer };
         VkDeviceSize offsets[] = { 0 };
         vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
-        vkCmdBindIndexBuffer(command_buffer, index_buffer->buffer, 0, VK_INDEX_TYPE_UINT16);
+        vkCmdBindIndexBuffer(command_buffer, index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
         context->bind_descriptor_sets(command_buffer, 0, 0);
 
-        vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
+        vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(model.indices.size()), 1, 0, 0, 0);
     };
 
     vk_context.main_loop([&]

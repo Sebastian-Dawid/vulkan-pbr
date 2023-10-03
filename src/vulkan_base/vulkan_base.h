@@ -79,6 +79,8 @@ class vulkan_context_t
         std::int32_t add_buffer(const buffer_settings_t& settings);
         std::int32_t add_image(const std::string& path, const image_settings_t& settings);
         buffer_t* get_buffer(std::uint32_t index);
+        buffer_t* get_last_buffer();
+        std::uint32_t get_buffer_count();
         image_t* get_image(std::uint32_t index);
         std::vector<VkDescriptorSetLayout> get_descriptor_set_layouts();
         std::uint32_t get_current_frame();

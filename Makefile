@@ -30,7 +30,7 @@ SHADER_SRCS_FULL = $(shell find $(SRC_DIRS) -name '*.vert' -o -name '*.frag')
 SHADER_SRCS = $(SHADER_SRCS_FULL:$(SRC_DIRS)/%=%)
 SHADER_OBJS = $(SHADER_SRCS:%=$(MAIN_BUILD)/%.spv)
 
-CFLAGS = -Wall -Wformat -I./includes -I./includes/imgui
+CFLAGS = -Wall -Wformat -I./includes -I./includes/imgui -I./src
 IMGUI_CFLAGS = -g -O3 -Wall -Wformat -I$(IMGUI_SRC_DIR) -I$(IMGUI_SRC_DIR)/backends -I$(IMGUI_SRC_DIR)/misc/cpp
 CXXFLAGS = -std=c++17
 CPPFLAGS = $(INC_FLAGS) -MMD -MP

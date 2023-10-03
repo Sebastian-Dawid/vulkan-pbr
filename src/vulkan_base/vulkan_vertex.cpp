@@ -1,5 +1,10 @@
 #include "vulkan_vertex.h"
 
+bool vertex_t::operator==(const vertex_t& other) const
+{
+    return this->pos == other.pos && this->tex_coord == other.tex_coord && this->color == other.color;
+}
+
 VkVertexInputBindingDescription vertex_t::get_binding_description()
 {
     VkVertexInputBindingDescription binding_description{};
@@ -30,3 +35,13 @@ std::array<VkVertexInputAttributeDescription, 3> vertex_t::get_attribute_descrip
     
     return attribute_descriptions;
 }
+
+namespace std
+{
+    size_t hash<vertex_t>::operator()(vertex_t const& vertex) const
+    {
+        return ((hash<glm::vec3>()(vertex.pos) ^
+                (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+                (hash<glm::vec2>()(vertex.tex_coord) << 1);
+    }
+};

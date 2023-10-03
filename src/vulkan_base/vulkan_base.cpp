@@ -710,6 +710,16 @@ buffer_t* vulkan_context_t::get_buffer(std::uint32_t index)
     return this->buffers[index];
 }
 
+buffer_t* vulkan_context_t::get_last_buffer()
+{
+    return this->buffers.back();
+}
+
+std::uint32_t vulkan_context_t::get_buffer_count()
+{
+    return this->buffers.size();
+}
+
 image_t* vulkan_context_t::get_image(std::uint32_t index)
 {
     return this->images[index];
