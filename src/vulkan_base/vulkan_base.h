@@ -18,11 +18,12 @@
 struct render_pass_settings_t
 {
     std::vector<VkAttachmentDescription> attachments;
-    std::vector<VkAttachmentReference> attachment_references;
+    std::vector<VkAttachmentReference> color_attachment_references;
+    std::vector<VkAttachmentReference> depth_attachment_references;
     std::vector<VkSubpassDescription> subpasses;
     std::vector<VkSubpassDependency> dependencies;
 
-    void populate_defaults(VkFormat format);
+    void populate_defaults(VkFormat format, const VkPhysicalDevice* physical_device);
 };
 
 class vulkan_context_t
@@ -42,6 +43,7 @@ class vulkan_context_t
         std::uint32_t current_frame = 0;
         std::vector<buffer_t*> buffers;
         std::vector<image_t*> images;
+        image_t* depth_buffer;
         std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
         std::vector<descriptor_pool_t*> descriptor_pools;
 

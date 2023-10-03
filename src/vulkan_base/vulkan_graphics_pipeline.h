@@ -30,6 +30,7 @@ struct pipeline_settings_t
     std::vector<VkDynamicState> dynamic_states;
     VkPipelineDynamicStateCreateInfo dynamic_state{};
     std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
+    VkPipelineDepthStencilStateCreateInfo depth_stencil{};
 
     void populate_defaults(const std::vector<VkDescriptorSetLayout>& descriptor_set_layputs);
 };

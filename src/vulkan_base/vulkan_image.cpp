@@ -3,14 +3,19 @@
 #include "vulkan_command_buffer.h"
 #include <iostream>
 
-std::int32_t create_image_view(VkImageView &view, VkImage image, VkFormat format, VkDevice device)
+bool has_stencil_component(VkFormat format)
+{
+    return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
+}
+
+std::int32_t create_image_view(VkImageView &view, VkImage image, VkFormat format, VkDevice device, VkImageAspectFlags aspect_mask)
 {
     VkImageViewCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     create_info.image = image;
     create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
     create_info.format = format;
-    create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    create_info.subresourceRange.aspectMask = aspect_mask;
     create_info.subresourceRange.baseMipLevel = 0;
     create_info.subresourceRange.levelCount = 1;
     create_info.subresourceRange.baseArrayLayer = 0;
@@ -113,13 +118,25 @@ std::int32_t image_t::transition_image_layout(VkImageLayout layout)
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = this->image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
 
     VkPipelineStageFlags src_stage, dst_stage;
+
+    if (layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+    {
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        if (has_stencil_component(this->format))
+        {
+            barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+    }
+    else
+    {
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
 
     if (this->layout == VK_IMAGE_LAYOUT_UNDEFINED && layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
     {
@@ -134,6 +151,13 @@ std::int32_t image_t::transition_image_layout(VkImageLayout layout)
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    }
+    else if (this->layout == VK_IMAGE_LAYOUT_UNDEFINED && layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+    {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        dst_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     }
     else
     {
@@ -154,6 +178,35 @@ std::int32_t image_t::transition_image_layout(VkImageLayout layout)
 
     end_single_time_commands(*this->command_pool, command_buffer, this->device->device, this->device->graphics_queue);
     return 0;
+}
+
+std::optional<VkFormat> find_supported_format(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features, const VkPhysicalDevice* physical_device)
+{
+    for (VkFormat format : candidates)
+    {
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(*physical_device, format, &props);
+        if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features)
+        {
+            return format;
+        }
+        else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features)
+        {
+            return format;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<VkFormat> find_depth_format(const VkPhysicalDevice* physical_device)
+{
+    return find_supported_format(
+            {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            physical_device
+            );
 }
 
 void image_t::copy_buffer_to_image(VkBuffer buffer)
@@ -225,6 +278,36 @@ std::int32_t image_t::init_texture(const std::string& path, const image_settings
     return 0;
 }
 
+std::int32_t image_t::init_depth_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device)
+{
+    std::optional<VkFormat> depth_format = find_depth_format(this->physical_device);
+    if (!depth_format.has_value())
+    {
+        std::cerr << "Failed to find depth format!" << std::endl;
+        return -1;
+    }
+
+    settings.format = depth_format.value();
+
+    this->settings = &settings;
+    this->device = device;
+    if (create_image(extent.width, extent.height, this->image, this->memory) != 0)
+    {
+        this->device = nullptr;
+        return -1;
+    }
+
+    this->width = extent.width;
+    this->height = extent.height;
+    this->format = settings.format;
+    this->layout = settings.layout;
+
+    create_image_view(this->view, this->image, settings.format, device->device, VK_IMAGE_ASPECT_DEPTH_BIT);
+    transition_image_layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+    return 0;
+}
+
 image_t::image_t(const VkPhysicalDevice* physical_device, const VkCommandPool* command_pool)
 {
     this->physical_device = physical_device;
@@ -234,8 +317,11 @@ image_t::image_t(const VkPhysicalDevice* physical_device, const VkCommandPool* c
 image_t::~image_t()
 {
     if (this->device == nullptr) return;
-    vkDestroySampler(this->device->device, this->sampler, nullptr);
-    std::cout << "Destroying Image Sampler!" << std::endl;
+    if (this->sampler != VK_NULL_HANDLE)
+    {
+        vkDestroySampler(this->device->device, this->sampler, nullptr);
+        std::cout << "Destroying Image Sampler!" << std::endl;
+    }
     vkDestroyImageView(this->device->device, this->view, nullptr);
     std::cout << "Destroying Image View!" << std::endl;
     vkDestroyImage(this->device->device, this->image, this->allocator);

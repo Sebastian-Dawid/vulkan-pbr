@@ -57,6 +57,17 @@ void pipeline_settings_t::populate_defaults(const std::vector<VkDescriptorSetLay
     this->dynamic_state.pDynamicStates = dynamic_states.data();
 
     this->descriptor_set_layouts = descriptor_set_layouts;
+
+    this->depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    this->depth_stencil.depthTestEnable = VK_TRUE;
+    this->depth_stencil.depthWriteEnable = VK_TRUE;
+    this->depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    this->depth_stencil.depthBoundsTestEnable = VK_FALSE;
+    this->depth_stencil.minDepthBounds = 0.0f;
+    this->depth_stencil.maxDepthBounds = 1.0f;
+    this->depth_stencil.stencilTestEnable = VK_FALSE;
+    this->depth_stencil.front = {};
+    this->depth_stencil.back = {};
 }
 
 std::optional<std::vector<char>> read_file(const std::string& filename)
@@ -151,6 +162,7 @@ std::int32_t graphics_pipeline_t::init(const pipeline_shaders_t& shaders, const 
     create_info.pRasterizationState = &settings.rasterizer;
     create_info.pMultisampleState = &settings.multisampling;
     create_info.pColorBlendState = &settings.color_blending;
+    create_info.pDepthStencilState = &settings.depth_stencil;
     create_info.pDynamicState = &settings.dynamic_state;
     create_info.layout = this->pipeline_layout;
     create_info.renderPass = *(this->render_pass);

@@ -3,6 +3,7 @@
 #include "vulkan_logical_device.h"
 #include <stb_image.h>
 #include <string>
+#include <vector>
 
 struct image_settings_t
 {
@@ -52,6 +53,7 @@ class image_t
         std::int32_t create_image_sampler(const sampler_settings_t& settings);
         std::int32_t transition_image_layout(VkImageLayout layout);
         void copy_buffer_to_image(VkBuffer buffer);
+
     public:
         std::uint32_t width;
         std::uint32_t height;
@@ -63,8 +65,11 @@ class image_t
         VkFormat format;
 
         std::int32_t init_texture(const std::string& path, const image_settings_t& settings, const logical_device_t* device);
+        std::int32_t init_depth_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device);
         image_t(const VkPhysicalDevice* physical_device, const VkCommandPool* command_pool);
         ~image_t();
 };
 
-std::int32_t create_image_view(VkImageView& view, VkImage image, VkFormat format, VkDevice device);
+std::optional<VkFormat> find_supported_format(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags featrues, const VkPhysicalDevice* physical_device);
+std::optional<VkFormat> find_depth_format(const VkPhysicalDevice* physical_device);
+std::int32_t create_image_view(VkImageView& view, VkImage image, VkFormat format, VkDevice device, VkImageAspectFlags aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT);

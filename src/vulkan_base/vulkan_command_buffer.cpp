@@ -3,15 +3,16 @@
 
 #include <iostream>
 
-void recording_settings_t::populate_defaults(VkRenderPass render_pass, VkFramebuffer framebuffer, VkExtent2D extent, VkPipeline pipeline, const VkClearValue& clear_color)
+void recording_settings_t::populate_defaults(VkRenderPass render_pass, VkFramebuffer framebuffer, VkExtent2D extent, VkPipeline pipeline,
+        const std::vector<VkClearValue>& clear_colors)
 {
     this->render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     this->render_pass_info.renderPass = render_pass;
     this->render_pass_info.framebuffer = framebuffer;
     this->render_pass_info.renderArea.extent = extent;
     this->render_pass_info.renderArea.offset = { 0, 0 };
-    this->render_pass_info.clearValueCount = 1;
-    this->render_pass_info.pClearValues = &clear_color;
+    this->render_pass_info.clearValueCount = static_cast<std::uint32_t>(clear_colors.size());
+    this->render_pass_info.pClearValues = clear_colors.data();
     this->pipeline = pipeline;
 }
 
