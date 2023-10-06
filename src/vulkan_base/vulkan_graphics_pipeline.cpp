@@ -34,7 +34,8 @@ void pipeline_settings_t::populate_defaults(const std::vector<VkDescriptorSetLay
     this->rasterizer.depthBiasEnable = VK_FALSE;
 
     this->multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    this->multisampling.sampleShadingEnable = VK_FALSE;
+    this->multisampling.sampleShadingEnable = VK_TRUE;
+    this->multisampling.minSampleShading = .2f;
     this->multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
     VkPipelineColorBlendAttachmentState color_blend_attachment{};
