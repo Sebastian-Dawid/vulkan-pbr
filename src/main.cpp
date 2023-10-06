@@ -52,6 +52,7 @@ int main()
     pipeline_shaders_t shaders = { "./build/target/shaders/main.vert.spv", std::nullopt, "./build/target/shaders/main.frag.spv" };
     pipeline_settings_t pipeline_settings;
     pipeline_settings.populate_defaults(vk_context.get_descriptor_set_layouts());
+    pipeline_settings.multisampling.rasterizationSamples = vk_context.msaa_samples;
     if (vk_context.add_pipeline(shaders, pipeline_settings) != 0) return -1;
     vk_context.set_active_pipeline(0);
 

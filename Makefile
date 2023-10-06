@@ -1,5 +1,6 @@
 CC = clang
 CXX = clang++
+AR = ar
 
 TARGET_EXEC = main
 

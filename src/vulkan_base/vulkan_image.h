@@ -67,6 +67,7 @@ class image_t
 
         std::int32_t init_texture(const std::string& path, const image_settings_t& settings, const logical_device_t* device);
         std::int32_t init_depth_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device);
+        std::int32_t init_color_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device);
         image_t(const VkPhysicalDevice* physical_device, const VkCommandPool* command_pool);
         ~image_t();
 };

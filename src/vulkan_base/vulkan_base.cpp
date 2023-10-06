@@ -2,6 +2,7 @@
 #include "vulkan_constants.h"
 #include "vulkan_queue_family_indices.h"
 #include "vulkan_validation_layers.h"
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <map>
@@ -222,6 +223,17 @@ std::int32_t vulkan_context_t::pick_physical_device()
         VkPhysicalDeviceProperties props;
         vkGetPhysicalDeviceProperties(this->physical_device, &props);
         std::cout << "\t" << props.deviceName << std::endl;
+
+        VkSampleCountFlags counts = props.limits.framebufferColorSampleCounts;
+        if (counts & VK_SAMPLE_COUNT_64_BIT) this->msaa_samples = VK_SAMPLE_COUNT_64_BIT;
+        else if (counts & VK_SAMPLE_COUNT_32_BIT) this->msaa_samples = VK_SAMPLE_COUNT_32_BIT;
+        else if (counts & VK_SAMPLE_COUNT_16_BIT) this->msaa_samples = VK_SAMPLE_COUNT_16_BIT;
+        else if (counts & VK_SAMPLE_COUNT_8_BIT) this->msaa_samples = VK_SAMPLE_COUNT_8_BIT;
+        else if (counts & VK_SAMPLE_COUNT_4_BIT) this->msaa_samples = VK_SAMPLE_COUNT_4_BIT;
+        else if (counts & VK_SAMPLE_COUNT_2_BIT) this->msaa_samples = VK_SAMPLE_COUNT_2_BIT;
+        
+        std::cout << "\t\tMax available MSAA samples: " << this->msaa_samples << std::endl;
+
     }
     else
     {
@@ -242,17 +254,17 @@ std::int32_t vulkan_context_t::create_surface()
     return 0;
 }
 
-void render_pass_settings_t::populate_defaults(VkFormat format, const VkPhysicalDevice* physical_device)
+void render_pass_settings_t::populate_defaults(VkFormat format, VkSampleCountFlagBits msaa_samples, const VkPhysicalDevice* physical_device)
 {
     VkAttachmentDescription color_attachment{};
     color_attachment.format = format;
-    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment.samples = msaa_samples;
     color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     this->attachments.push_back(color_attachment);
 
     VkAttachmentReference color_attachment_ref{};
@@ -262,7 +274,7 @@ void render_pass_settings_t::populate_defaults(VkFormat format, const VkPhysical
 
     VkAttachmentDescription depth_attachment{};
     depth_attachment.format = find_depth_format(physical_device).value();
-    depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depth_attachment.samples = msaa_samples;
     depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -271,16 +283,29 @@ void render_pass_settings_t::populate_defaults(VkFormat format, const VkPhysical
     depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     this->attachments.push_back(depth_attachment);
     
-    VkAttachmentReference depth_attachment_ref{};
-    depth_attachment_ref.attachment = 1;
-    depth_attachment_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    this->depth_attachment_references.push_back(depth_attachment_ref);
+    this->depth_attachment_reference.attachment = 1;
+    this->depth_attachment_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentDescription color_attachment_resolve{};
+    color_attachment_resolve.format = format;
+    color_attachment_resolve.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment_resolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment_resolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment_resolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment_resolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_attachment_resolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    color_attachment_resolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    this->attachments.push_back(color_attachment_resolve);
+
+    color_attachment_resolve_reference.attachment = 2;
+    color_attachment_resolve_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = static_cast<std::uint32_t>(this->color_attachment_references.size());
     subpass.pColorAttachments = this->color_attachment_references.data();
-    subpass.pDepthStencilAttachment = this->depth_attachment_references.data();
+    subpass.pDepthStencilAttachment = &this->depth_attachment_reference;
+    subpass.pResolveAttachments = &this->color_attachment_resolve_reference;
     this->subpasses.push_back(subpass);
 
     VkSubpassDependency dependency{};
@@ -316,12 +341,12 @@ std::int32_t vulkan_context_t::create_framebuffers()
     this->swap_chain_framebuffers.resize(this->swap_chain->image_views.size());
     for (std::size_t i = 0; i < this->swap_chain->image_views.size(); ++i)
     {
-        VkImageView attachments[] = { this->swap_chain->image_views[i], this->depth_buffer->view };
+        VkImageView attachments[] = { this->color_buffer->view, this->depth_buffer->view, this->swap_chain->image_views[i] };
         
         VkFramebufferCreateInfo create_info{};
         create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         create_info.renderPass = this->render_pass;
-        create_info.attachmentCount = 2;
+        create_info.attachmentCount = 3;
         create_info.pAttachments = attachments;
         create_info.width = this->swap_chain->extent.width;
         create_info.height = this->swap_chain->extent.height;
@@ -389,7 +414,7 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
     }
     vkDeviceWaitIdle(this->device->device);
 
-
+    delete this->color_buffer;
     delete this->depth_buffer;
     for (VkFramebuffer fb : this->swap_chain_framebuffers)
     {
@@ -400,8 +425,15 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
     this->swap_chain = new swap_chain_t(this->physical_device, this->surface);
     if (this->swap_chain->init(this->device, this->surface, this->window) != 0) return -1;
     
+    image_settings_t color_buffer_settings;
+    color_buffer_settings.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    color_buffer_settings.sample_count = this->msaa_samples;
+    this->color_buffer = new image_t(&this->physical_device, &this->command_pool);
+    if (this->color_buffer->init_color_buffer(color_buffer_settings, this->swap_chain->extent, this->device) != 0) return -1;
+    
     image_settings_t depth_buffer_settings;
     depth_buffer_settings.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    depth_buffer_settings.sample_count = this->msaa_samples;
     this->depth_buffer = new image_t(&this->physical_device, &this->command_pool);
     if (this->depth_buffer->init_depth_buffer(depth_buffer_settings, this->swap_chain->extent, this->device) != 0) return -1;
     if (create_framebuffers() != 0) return -1;
@@ -604,13 +636,20 @@ vulkan_context_t::vulkan_context_t(std::string name)
     if (this->swap_chain->init(this->device, this->surface, this->window) != 0) return;
     
     render_pass_settings_t render_pass_settings;
-    render_pass_settings.populate_defaults(this->swap_chain->format.format, &this->physical_device);
+    render_pass_settings.populate_defaults(this->swap_chain->format.format, this->msaa_samples, &this->physical_device);
     if (create_render_pass(render_pass_settings) != 0) return;
    
     if (create_command_pool() != 0) return;
 
+    image_settings_t color_buffer_settings;
+    color_buffer_settings.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    color_buffer_settings.sample_count = this->msaa_samples;
+    this->color_buffer = new image_t(&this->physical_device, &this->command_pool);
+    if (this->color_buffer->init_color_buffer(color_buffer_settings, this->swap_chain->extent, this->device) != 0) return;
+
     image_settings_t depth_buffer_settings;
     depth_buffer_settings.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    depth_buffer_settings.sample_count = this->msaa_samples;
     this->depth_buffer = new image_t(&this->physical_device, &this->command_pool);
     if (this->depth_buffer->init_depth_buffer(depth_buffer_settings, this->swap_chain->extent, this->device) != 0) return;
 
@@ -636,6 +675,7 @@ vulkan_context_t::~vulkan_context_t()
         delete img;
     }
 
+    delete this->color_buffer;
     delete this->depth_buffer;
 
     for (descriptor_pool_t* pool : this->descriptor_pools)

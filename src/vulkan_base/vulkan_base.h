@@ -19,11 +19,12 @@ struct render_pass_settings_t
 {
     std::vector<VkAttachmentDescription> attachments;
     std::vector<VkAttachmentReference> color_attachment_references;
-    std::vector<VkAttachmentReference> depth_attachment_references;
     std::vector<VkSubpassDescription> subpasses;
     std::vector<VkSubpassDependency> dependencies;
+    VkAttachmentReference depth_attachment_reference;
+    VkAttachmentReference color_attachment_resolve_reference;
 
-    void populate_defaults(VkFormat format, const VkPhysicalDevice* physical_device);
+    void populate_defaults(VkFormat format, VkSampleCountFlagBits msaa_samples, const VkPhysicalDevice* physical_device);
 };
 
 class vulkan_context_t
@@ -43,9 +44,11 @@ class vulkan_context_t
         std::uint32_t current_frame = 0;
         std::vector<buffer_t*> buffers;
         std::vector<image_t*> images;
+        image_t* color_buffer;
         image_t* depth_buffer;
         std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
         std::vector<descriptor_pool_t*> descriptor_pools;
+
 
         struct
         {
@@ -72,6 +75,7 @@ class vulkan_context_t
         GLFWwindow* window;
         bool framebuffer_resized = false;
         bool initialized = false;
+        VkSampleCountFlagBits msaa_samples = VK_SAMPLE_COUNT_1_BIT;
 
         std::int32_t add_descriptor_set_layout(const std::vector<VkDescriptorSetLayoutBinding> layout_bindings = { UBO_LAYOUT_BINDING, SAMPLER_LAYOUT_BINDING });
         std::int32_t add_pipeline(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings);

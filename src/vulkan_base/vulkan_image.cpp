@@ -407,6 +407,27 @@ std::int32_t image_t::init_depth_buffer(image_settings_t settings, const VkExten
     return 0;
 }
 
+std::int32_t image_t::init_color_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device)
+{
+    this->settings = settings;
+    this->device = device;
+    if (create_image(extent.width, extent.height, this->image, this->memory) != 0)
+    {
+        this->device = nullptr;
+        return -1;
+    }
+
+    this->width = extent.width;
+    this->height = extent.height;
+    this->format = settings.format;
+    this->layout = settings.layout;
+    this->sampler = VK_NULL_HANDLE;
+
+    create_image_view(this->view, this->image, settings.format, device->device, VK_IMAGE_ASPECT_COLOR_BIT);
+
+    return 0;
+}
+
 image_t::image_t(const VkPhysicalDevice* physical_device, const VkCommandPool* command_pool)
 {
     this->physical_device = physical_device;
