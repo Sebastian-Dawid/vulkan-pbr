@@ -2,7 +2,7 @@
 
 bool vertex_t::operator==(const vertex_t& other) const
 {
-    return this->pos == other.pos && this->tex_coord == other.tex_coord && this->color == other.color;
+    return this->pos == other.pos && this->tex_coord == other.tex_coord && this->normal == other.normal;
 }
 
 VkVertexInputBindingDescription vertex_t::get_binding_description()
@@ -26,7 +26,7 @@ std::array<VkVertexInputAttributeDescription, 3> vertex_t::get_attribute_descrip
     attribute_descriptions[1].binding = 0;
     attribute_descriptions[1].location = 1;
     attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attribute_descriptions[1].offset = offsetof(vertex_t, color);
+    attribute_descriptions[1].offset = offsetof(vertex_t, normal);
     
     attribute_descriptions[2].binding = 0;
     attribute_descriptions[2].location = 2;
@@ -41,7 +41,7 @@ namespace std
     size_t hash<vertex_t>::operator()(vertex_t const& vertex) const
     {
         return ((hash<glm::vec3>()(vertex.pos) ^
-                (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+                (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^
                 (hash<glm::vec2>()(vertex.tex_coord) << 1);
     }
 };

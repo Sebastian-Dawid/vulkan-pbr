@@ -12,7 +12,7 @@
 struct vertex_t
 {
     glm::vec3 pos;
-    glm::vec3 color;
+    glm::vec3 normal;
     glm::vec2 tex_coord;
 
     bool operator==(const vertex_t& other) const;

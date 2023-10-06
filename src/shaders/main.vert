@@ -8,15 +8,17 @@ layout (binding = 0) uniform ubo_t
 } ubo;
 
 layout (location = 0) in vec3 pos;
-layout (location = 1) in vec3 color;
+layout (location = 1) in vec3 normal;
 layout (location = 2) in vec2 tex_coord;
 
-layout (location = 0) out vec3 frag_color;
+layout (location = 0) out vec3 frag_pos;
 layout (location = 1) out vec2 frag_tex_coord;
+layout (location = 2) out vec3 frag_normal;
 
 void main()
 {
     gl_Position = ubo.projection * ubo.view * ubo. model * vec4(pos, 1.0);
-    frag_color = color;
+    frag_pos = vec3(ubo.model * vec4(pos, 1.0));
     frag_tex_coord = tex_coord;
+    frag_normal = mat3(transpose(inverse(ubo.model))) * normal;
 }

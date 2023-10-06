@@ -428,6 +428,7 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
     image_settings_t color_buffer_settings;
     color_buffer_settings.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     color_buffer_settings.sample_count = this->msaa_samples;
+    color_buffer_settings.format = this->swap_chain->format.format;
     this->color_buffer = new image_t(&this->physical_device, &this->command_pool);
     if (this->color_buffer->init_color_buffer(color_buffer_settings, this->swap_chain->extent, this->device) != 0) return -1;
     
@@ -468,10 +469,10 @@ std::int32_t vulkan_context_t::add_buffer(const buffer_settings_t& settings)
     return 0;
 }
 
-std::int32_t vulkan_context_t::add_image(const std::string& path, const image_settings_t& settings)
+std::int32_t vulkan_context_t::add_image(const std::string& path, const image_settings_t& settings, bool flip)
 {
     image_t* image = new image_t(&this->physical_device, &this->command_pool);
-    if (image->init_texture(path, settings, this->device) != 0) return -1;
+    if (image->init_texture(path, settings, this->device, flip) != 0) return -1;
     this->images.push_back(image);
     return 0;
 }
@@ -644,6 +645,7 @@ vulkan_context_t::vulkan_context_t(std::string name)
     image_settings_t color_buffer_settings;
     color_buffer_settings.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     color_buffer_settings.sample_count = this->msaa_samples;
+    color_buffer_settings.format = this->swap_chain->format.format;
     this->color_buffer = new image_t(&this->physical_device, &this->command_pool);
     if (this->color_buffer->init_color_buffer(color_buffer_settings, this->swap_chain->extent, this->device) != 0) return;
 

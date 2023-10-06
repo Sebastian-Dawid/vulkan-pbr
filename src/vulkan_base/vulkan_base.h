@@ -81,7 +81,7 @@ class vulkan_context_t
         std::int32_t add_pipeline(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings);
         std::int32_t set_active_pipeline(std::uint32_t index);
         std::int32_t add_buffer(const buffer_settings_t& settings);
-        std::int32_t add_image(const std::string& path, const image_settings_t& settings);
+        std::int32_t add_image(const std::string& path, const image_settings_t& settings, bool flip = false);
         buffer_t* get_buffer(std::uint32_t index);
         buffer_t* get_last_buffer();
         std::uint32_t get_buffer_count();

@@ -11,6 +11,13 @@ struct ubo_t
     alignas(16) glm::mat4 projection;
 };
 
+struct blinn_phong_t
+{
+    glm::vec3 light_pos;
+    glm::vec3 light_color;
+    glm::vec3 view_pos;
+};
+
 int main()
 {
 
@@ -21,7 +28,7 @@ int main()
         return -1;
     }
 
-    model_t model("./models/viking_room/viking_room.obj");
+    model_t model("./models/backpack/backpack.obj");
     if (!model.is_initialized()) return -1;
     auto bufs = model.set_up_buffer(&vk_context);
     if (!bufs.has_value()) return -1;
@@ -37,18 +44,36 @@ int main()
         ubo_settings.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
         ubo_settings.memory_properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
         if (vk_context.add_buffer(ubo_settings) != 0) return -1;
-        buffer_t* ubo_buffer = vk_context.get_buffer(2 + i);
+        buffer_t* ubo_buffer = vk_context.get_last_buffer();
         ubo_buffer->map_memory();
         ubo_buffers.push_back(ubo_buffer);
     }
     descriptor_config.push_back(std::make_tuple(0, sizeof(ubo_t), &ubo_buffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
 
     image_settings_t image_settings;
-    if (vk_context.add_image("./models/viking_room/viking_room.png", image_settings) != 0) return -1;
+    if (vk_context.add_image("./models/backpack/albedo.jpg", image_settings, true) != 0) return -1;
     image_t* img = vk_context.get_image(0);
     descriptor_config.push_back(std::make_tuple(1, 0, img, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
 
-    vk_context.add_descriptor_set_layout();
+    std::vector<buffer_t*> blinn_phong_buffers;
+    for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        buffer_settings_t blinn_phong_settings;
+        blinn_phong_settings.size = sizeof(blinn_phong_t);
+        blinn_phong_settings.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        blinn_phong_settings.memory_properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        blinn_phong_settings.binding = 2;
+        if (vk_context.add_buffer(blinn_phong_settings) != 0) return -1;
+        buffer_t* blinn_phong_buffer = vk_context.get_last_buffer();
+        blinn_phong_buffer->map_memory();
+        blinn_phong_buffers.push_back(blinn_phong_buffer);
+    }
+    descriptor_config.push_back(std::make_tuple(2, sizeof(blinn_phong_t), &blinn_phong_buffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
+
+    VkDescriptorSetLayoutBinding phong_layout_binding = { 2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
+    std::vector<VkDescriptorSetLayoutBinding> bindings = { UBO_LAYOUT_BINDING, SAMPLER_LAYOUT_BINDING, phong_layout_binding };
+
+    vk_context.add_descriptor_set_layout(bindings);
     pipeline_shaders_t shaders = { "./build/target/shaders/main.vert.spv", std::nullopt, "./build/target/shaders/main.frag.spv" };
     pipeline_settings_t pipeline_settings;
     pipeline_settings.populate_defaults(vk_context.get_descriptor_set_layouts());
@@ -64,10 +89,12 @@ int main()
         static std::chrono::time_point start_time = std::chrono::high_resolution_clock::now();
         std::chrono::time_point current_time = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+        static blinn_phong_t blinn_phong = { {0.0f, 5.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {10.0f, 0.0f, 0.0f} };
+        std::memcpy(blinn_phong_buffers[context->get_current_frame()]->mapped_memory, &blinn_phong, sizeof(blinn_phong_t));
         static ubo_t ubo;
-        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.projection = glm::perspective(glm::radians(45.0f), context->get_swap_chain_extent().width / (float) context->get_swap_chain_extent().height, 0.1f, 10.0f);
+        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        ubo.view = glm::lookAt(glm::vec3(10.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        ubo.projection = glm::perspective(glm::radians(45.0f), context->get_swap_chain_extent().width / (float) context->get_swap_chain_extent().height, 0.1f, 100.0f);
         ubo.projection[1][1] *= -1;
         std::memcpy(ubo_buffers[context->get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
 

@@ -330,9 +330,10 @@ std::int32_t image_t::generate_mipmaps()
     return 0;
 }
 
-std::int32_t image_t::init_texture(const std::string& path, const image_settings_t& settings, const logical_device_t* device)
+std::int32_t image_t::init_texture(const std::string& path, const image_settings_t& settings, const logical_device_t* device, bool flip)
 {
     std::int32_t width, height, channels;
+    stbi_set_flip_vertically_on_load(flip);
     stbi_uc* pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
     VkDeviceSize image_size = width * height * 4;
     if (!pixels)

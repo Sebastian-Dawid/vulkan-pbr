@@ -10,8 +10,10 @@ void descriptor_pool_t::configure_descriptors(std::vector<std::tuple<std::uint32
     for (std::uint32_t i = 0; i < this->sets.size(); ++i)
     {
         std::vector<VkWriteDescriptorSet> descriptor_writes;
-        std::vector<VkDescriptorBufferInfo> buffer_infos;
-        std::vector<VkDescriptorImageInfo> image_infos;
+        std::vector<VkDescriptorBufferInfo> buffer_infos(static_cast<std::uint32_t>(data.size()));
+        std::vector<VkDescriptorBufferInfo>::iterator buf_iter = buffer_infos.begin();
+        std::vector<VkDescriptorImageInfo> image_infos(static_cast<std::uint32_t>(data.size()));
+        std::vector<VkDescriptorImageInfo>::iterator img_iter = image_infos.begin();
         for (const auto& e : data)
         {
             VkWriteDescriptorSet descriptor_write{};
@@ -31,9 +33,10 @@ void descriptor_pool_t::configure_descriptors(std::vector<std::tuple<std::uint32
                         image_info.sampler = img->sampler;
                         image_info.imageView = img->view;
                         image_info.imageLayout = img->layout;
-                        image_infos.push_back(image_info);
+                        *img_iter = image_info;
                     }
-                    descriptor_write.pImageInfo = &image_infos.back();
+                    descriptor_write.pImageInfo = img_iter.base();
+                    img_iter++;
                     break;
                 case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
                     {
@@ -42,9 +45,10 @@ void descriptor_pool_t::configure_descriptors(std::vector<std::tuple<std::uint32
                         buffer_info.buffer = buf->buffer;
                         buffer_info.range = std::get<1>(e);
                         buffer_info.offset = 0;
-                        buffer_infos.push_back(buffer_info);
+                        *buf_iter = buffer_info;
                     }
-                    descriptor_write.pBufferInfo = &buffer_infos.back();
+                    descriptor_write.pBufferInfo = buf_iter.base();
+                    buf_iter++;
                     break;
                 default:
                     break;
