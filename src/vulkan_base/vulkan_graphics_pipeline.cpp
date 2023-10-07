@@ -4,7 +4,7 @@
 #include <iostream>
 #include <tuple>
 
-void pipeline_settings_t::populate_defaults(const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts)
+void pipeline_settings_t::populate_defaults(const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, render_pass_t* render_pass, std::uint32_t color_attachment_count)
 {
     this->vertex_binding_descriptions.push_back(vertex_t::get_binding_description());
     std::array<VkVertexInputAttributeDescription, 3> attribute_description = vertex_t::get_attribute_description();
@@ -38,10 +38,13 @@ void pipeline_settings_t::populate_defaults(const std::vector<VkDescriptorSetLay
     this->multisampling.minSampleShading = .2f;
     this->multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    VkPipelineColorBlendAttachmentState color_blend_attachment{};
-    color_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    color_blend_attachment.blendEnable = VK_FALSE;
-    this->color_blend_attachments.push_back(color_blend_attachment);
+    for (std::uint32_t i = 0; i < color_attachment_count; ++i)
+    {
+        VkPipelineColorBlendAttachmentState color_blend_attachment{};
+        color_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        color_blend_attachment.blendEnable = VK_FALSE;
+        this->color_blend_attachments.push_back(color_blend_attachment);
+    }
 
     this->color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     this->color_blending.logicOpEnable = VK_FALSE;
@@ -69,6 +72,8 @@ void pipeline_settings_t::populate_defaults(const std::vector<VkDescriptorSetLay
     this->depth_stencil.stencilTestEnable = VK_FALSE;
     this->depth_stencil.front = {};
     this->depth_stencil.back = {};
+
+    this->render_pass = render_pass;
 }
 
 std::optional<std::vector<char>> read_file(const std::string& filename)
@@ -166,7 +171,7 @@ std::int32_t graphics_pipeline_t::init(const pipeline_shaders_t& shaders, const 
     create_info.pDepthStencilState = &settings.depth_stencil;
     create_info.pDynamicState = &settings.dynamic_state;
     create_info.layout = this->pipeline_layout;
-    create_info.renderPass = *(this->render_pass);
+    create_info.renderPass = this->render_pass->render_pass;
     create_info.subpass = 0;
 
     if (vkCreateGraphicsPipelines(device->device, VK_NULL_HANDLE, 1, &create_info, this->allocator, &(this->pipeline)) != VK_SUCCESS)
@@ -184,7 +189,7 @@ std::int32_t graphics_pipeline_t::init(const pipeline_shaders_t& shaders, const 
     return 0;
 }
 
-graphics_pipeline_t::graphics_pipeline_t(const VkRenderPass* render_pass, VkExtent2D swap_chain_extent)
+graphics_pipeline_t::graphics_pipeline_t(const render_pass_t* render_pass, VkExtent2D swap_chain_extent)
 {
     this->render_pass = render_pass;
     this->swap_chain_extent = swap_chain_extent;

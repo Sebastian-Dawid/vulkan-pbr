@@ -15,8 +15,9 @@ std::vector<const char*> get_required_extensions()
 
     p_glfw_exts = glfwGetRequiredInstanceExtensions(&glfw_ext_count);
     std::vector<const char*> glfw_exts(p_glfw_exts, p_glfw_exts + glfw_ext_count);
+#ifdef PORTABILITY
     glfw_exts.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-
+#endif
     if (ENABLE_VALIDATION_LAYERS)
     {
         glfw_exts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -39,7 +40,7 @@ std::int32_t vulkan_context_t::create_instance(std::string name)
     app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     app_info.pEngineName = "No Engine";
     app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.apiVersion = VK_API_VERSION_1_0;
+    app_info.apiVersion = VK_API_VERSION_1_3;
 
     VkInstanceCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -49,8 +50,9 @@ std::int32_t vulkan_context_t::create_instance(std::string name)
 
     create_info.enabledExtensionCount = glfw_exts.size();
     create_info.ppEnabledExtensionNames = glfw_exts.data();
+#ifdef PORTABILITY
     create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-
+#endif
     std::uint32_t ext_count = 0;
     vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, nullptr);
     std::vector<VkExtensionProperties> exts(ext_count);
@@ -254,58 +256,71 @@ std::int32_t vulkan_context_t::create_surface()
     return 0;
 }
 
-void render_pass_settings_t::populate_defaults(VkFormat format, VkSampleCountFlagBits msaa_samples, const VkPhysicalDevice* physical_device)
+void render_pass_settings_t::populate_defaults(VkFormat format, VkSampleCountFlagBits msaa_samples, const VkPhysicalDevice* physical_device,
+        std::uint32_t color_attachment_count, std::uint32_t depth_attachment_count, std::uint32_t color_resolve_attachment_count)
 {
-    VkAttachmentDescription color_attachment{};
-    color_attachment.format = format;
-    color_attachment.samples = msaa_samples;
-    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    this->attachments.push_back(color_attachment);
+    for (std::uint32_t i = 0; i < color_attachment_count; ++i)
+    {
+        VkAttachmentDescription color_attachment{};
+        color_attachment.format = format;
+        color_attachment.samples = msaa_samples;
+        color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        this->attachments.push_back(color_attachment);
 
-    VkAttachmentReference color_attachment_ref{};
-    color_attachment_ref.attachment = 0;
-    color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    this->color_attachment_references.push_back(color_attachment_ref);
-
-    VkAttachmentDescription depth_attachment{};
-    depth_attachment.format = find_depth_format(physical_device).value();
-    depth_attachment.samples = msaa_samples;
-    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    this->attachments.push_back(depth_attachment);
-    
-    this->depth_attachment_reference.attachment = 1;
-    this->depth_attachment_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentDescription color_attachment_resolve{};
-    color_attachment_resolve.format = format;
-    color_attachment_resolve.samples = VK_SAMPLE_COUNT_1_BIT;
-    color_attachment_resolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    color_attachment_resolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    color_attachment_resolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    color_attachment_resolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    color_attachment_resolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    color_attachment_resolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    this->attachments.push_back(color_attachment_resolve);
-
-    color_attachment_resolve_reference.attachment = 2;
-    color_attachment_resolve_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        VkAttachmentReference color_attachment_ref{};
+        color_attachment_ref.attachment = i;
+        color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        this->color_attachment_references.push_back(color_attachment_ref);
+    }
 
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = static_cast<std::uint32_t>(this->color_attachment_references.size());
     subpass.pColorAttachments = this->color_attachment_references.data();
-    subpass.pDepthStencilAttachment = &this->depth_attachment_reference;
-    subpass.pResolveAttachments = &this->color_attachment_resolve_reference;
+
+    if (depth_attachment_count > 0)
+    {
+        VkAttachmentDescription depth_attachment{};
+        depth_attachment.format = find_depth_format(physical_device).value();
+        depth_attachment.samples = msaa_samples;
+        depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        this->attachments.push_back(depth_attachment);
+
+        this->depth_attachment_reference.attachment = color_attachment_count;
+        this->depth_attachment_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        
+        subpass.pDepthStencilAttachment = &this->depth_attachment_reference;
+    }
+
+
+    
+    if (color_resolve_attachment_count > 0)
+    {
+        VkAttachmentDescription color_attachment_resolve{};
+        color_attachment_resolve.format = format;
+        color_attachment_resolve.samples = VK_SAMPLE_COUNT_1_BIT;
+        color_attachment_resolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color_attachment_resolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color_attachment_resolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color_attachment_resolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        color_attachment_resolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        color_attachment_resolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        this->attachments.push_back(color_attachment_resolve);
+
+        color_attachment_resolve_reference.attachment = 2;
+        color_attachment_resolve_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        subpass.pResolveAttachments = &this->color_attachment_resolve_reference;
+    }
     this->subpasses.push_back(subpass);
 
     VkSubpassDependency dependency{};
@@ -318,47 +333,24 @@ void render_pass_settings_t::populate_defaults(VkFormat format, VkSampleCountFla
     this->dependencies.push_back(dependency);
 }
 
-std::int32_t vulkan_context_t::create_render_pass(const render_pass_settings_t& settings)
+std::optional<VkFramebuffer> vulkan_context_t::add_framebuffer(VkRenderPass render_pass, std::vector<VkImageView> attachments)
 {
-    VkRenderPassCreateInfo create_info{};
-    create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    create_info.attachmentCount = static_cast<std::uint32_t>(settings.attachments.size());
-    create_info.pAttachments = settings.attachments.data();
-    create_info.subpassCount = static_cast<std::uint32_t>(settings.subpasses.size());
-    create_info.pSubpasses = settings.subpasses.data();
-    create_info.dependencyCount = static_cast<std::uint32_t>(settings.dependencies.size());
-    create_info.pDependencies = settings.dependencies.data();
+    VkFramebuffer framebuffer;
+    VkFramebufferCreateInfo create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    create_info.renderPass = render_pass;
+    create_info.attachmentCount = static_cast<std::uint32_t>(attachments.size());
+    create_info.pAttachments = attachments.data();
+    create_info.width = this->swap_chain->extent.width;
+    create_info.height = this->swap_chain->extent.height;
+    create_info.layers = 1;
 
-    if (vkCreateRenderPass(this->device->device, &create_info, nullptr, &(this->render_pass)) != VK_SUCCESS)
+    if (vkCreateFramebuffer(this->device->device, &create_info, nullptr, &framebuffer) != VK_SUCCESS)
     {
-        std::cerr << "Failed to create render pass!" << std::endl;
+        std::cerr << "Failed to create framebuffer!" << std::endl;
+        return std::nullopt;
     }
-    return 0;
-}
-
-std::int32_t vulkan_context_t::create_framebuffers()
-{
-    this->swap_chain_framebuffers.resize(this->swap_chain->image_views.size());
-    for (std::size_t i = 0; i < this->swap_chain->image_views.size(); ++i)
-    {
-        VkImageView attachments[] = { this->color_buffer->view, this->depth_buffer->view, this->swap_chain->image_views[i] };
-        
-        VkFramebufferCreateInfo create_info{};
-        create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        create_info.renderPass = this->render_pass;
-        create_info.attachmentCount = 3;
-        create_info.pAttachments = attachments;
-        create_info.width = this->swap_chain->extent.width;
-        create_info.height = this->swap_chain->extent.height;
-        create_info.layers = 1;
-
-        if (vkCreateFramebuffer(this->device->device, &create_info, nullptr, &(this->swap_chain_framebuffers[i])) != VK_SUCCESS)
-        {
-            std::cerr << "Failed to create framebuffer!" << std::endl;
-            return -1;
-        }
-    }
-    return 0;
+    return framebuffer;
 }
 
 std::int32_t vulkan_context_t::create_command_pool()
@@ -416,10 +408,6 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
 
     delete this->color_buffer;
     delete this->depth_buffer;
-    for (VkFramebuffer fb : this->swap_chain_framebuffers)
-    {
-        vkDestroyFramebuffer(this->device->device, fb, nullptr);
-    }
     delete this->swap_chain;
 
     this->swap_chain = new swap_chain_t(this->physical_device, this->surface);
@@ -437,27 +425,29 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
     depth_buffer_settings.sample_count = this->msaa_samples;
     this->depth_buffer = new image_t(&this->physical_device, &this->command_pool);
     if (this->depth_buffer->init_depth_buffer(depth_buffer_settings, this->swap_chain->extent, this->device) != 0) return -1;
-    if (create_framebuffers() != 0) return -1;
+    
+    for (render_pass_t* render_pass : this->render_passes)
+    {
+        std::uint32_t idx = 0;
+        for (framebuffer_t fb : render_pass->framebuffers)
+        {
+            render_pass->recreate_framebuffer(idx, this->swap_chain->extent.width, this->swap_chain->extent.height);
+            ++idx;
+        }
+    }
 
     return 0;
 }
 
 std::int32_t vulkan_context_t::add_pipeline(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings)
 {
-    graphics_pipeline_t* pipeline = new graphics_pipeline_t(&this->render_pass, this->swap_chain->extent);
+    graphics_pipeline_t* pipeline = new graphics_pipeline_t(settings.render_pass, this->swap_chain->extent);
     if (pipeline->init(shaders, settings, this->device) != 0) return -1;
     this->graphics_pipelines.push_back(pipeline);
-    return 0;
-}
-
-std::int32_t vulkan_context_t::set_active_pipeline(std::uint32_t index)
-{
-    if (index >= this->graphics_pipelines.size())
-    {
-        std::cerr << "Pipeline " << index << " does not exist!" << std::endl;
-        return -1;
-    }
-    this->current_pipeline = this->graphics_pipelines[index];
+   
+    delete this->command_buffers;
+    this->command_buffers = new command_buffers_t();
+    if (this->command_buffers->init(this->command_pool, &(this->device->device), static_cast<std::uint32_t>(this->graphics_pipelines.size())) != 0) return -1;
     return 0;
 }
 
@@ -504,18 +494,18 @@ std::int32_t vulkan_context_t::add_descriptor_set_layout(const std::vector<VkDes
 
 void vulkan_context_t::bind_descriptor_sets(VkCommandBuffer command_buffer, std::uint32_t pool_index, std::uint32_t first_set)
 {
+    pool_index = 0;
+    for (graphics_pipeline_t* pipe : this->graphics_pipelines)
+    {
+        if (pipe == this->current_pipeline) break;
+        pool_index++;
+    }
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, this->current_pipeline->pipeline_layout, first_set, 1,
-            &this->descriptor_pools[0]->sets[this->current_frame], 0, nullptr);
+            &this->descriptor_pools[pool_index]->sets[this->current_frame], 0, nullptr);
 }
 
 std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vulkan_context_t*)> func)
 {
-    if (this->current_pipeline == nullptr)
-    {
-        std::cerr << "No active pipeline set!" << std::endl;
-        return -1;
-    }
-
     vkWaitForFences(this->device->device, 1, &this->sync_objects.in_flight[this->current_frame], VK_TRUE, UINT64_MAX);
 
     std::uint32_t image_index;
@@ -539,13 +529,24 @@ std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vu
     vkResetFences(this->device->device, 1, &this->sync_objects.in_flight[this->current_frame]);
     vkResetCommandBuffer(this->command_buffers->command_buffers[this->current_frame], 0);
 
-    recording_settings_t settings{};
-    settings.populate_defaults(this->render_pass, this->swap_chain_framebuffers[image_index], this->swap_chain->extent, this->current_pipeline->pipeline, CLEAR_COLORS);
-    settings.draw_command = [&] (VkCommandBuffer command_buffer) { func(command_buffer, this); };
-
-    if (this->command_buffers->record(this->current_frame, settings) != 0)
+    std::vector<VkCommandBuffer> command_buffers;
+    
+    std::uint32_t pipeline_index = 0;
+    for (graphics_pipeline_t* pipeline : this->graphics_pipelines)
     {
-        return -1;
+        std::uint32_t pipeline_offset = pipeline_index * MAX_FRAMES_IN_FLIGHT;
+        this->current_pipeline = pipeline;
+        recording_settings_t settings{};
+        settings.populate_defaults(pipeline->render_pass->render_pass, pipeline->render_pass->framebuffers[(pipeline_index == 1) ? image_index : 0].framebuffer,
+                this->swap_chain->extent, pipeline->pipeline, (pipeline_index == 1) ? CLEAR_COLORS : G_CLEAR_COLORS);
+        settings.draw_command = [&] (VkCommandBuffer command_buffer) { func(command_buffer, this); };
+
+        if (this->command_buffers->record(pipeline_offset + this->current_frame, settings) != 0)
+        {
+            return -1;
+        }
+        command_buffers.push_back(this->command_buffers->command_buffers[pipeline_offset + this->current_frame]);
+        ++pipeline_index;
     }
 
     VkSubmitInfo submit_info{};
@@ -557,8 +558,8 @@ std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vu
     submit_info.pWaitSemaphores = wait_semaphores;
     submit_info.pWaitDstStageMask = wait_stages;
 
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &this->command_buffers->command_buffers[this->current_frame];
+    submit_info.commandBufferCount = static_cast<std::uint32_t>(command_buffers.size());
+    submit_info.pCommandBuffers = command_buffers.data();
 
     VkSemaphore signal_semaphores[] = { this->sync_objects.render_finished[this->current_frame] };
     submit_info.signalSemaphoreCount = 1;
@@ -613,7 +614,7 @@ vulkan_context_t::vulkan_context_t(std::string name)
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-    this->window = glfwCreateWindow(1280, 720, name.c_str(), nullptr, nullptr);
+    this->window = glfwCreateWindow(1920, 1080, name.c_str(), nullptr, nullptr);
     glfwSetWindowUserPointer(this->window, this);
     glfwSetFramebufferSizeCallback(this->window, framebuffer_resize_callback);
 
@@ -638,8 +639,9 @@ vulkan_context_t::vulkan_context_t(std::string name)
     
     render_pass_settings_t render_pass_settings;
     render_pass_settings.populate_defaults(this->swap_chain->format.format, this->msaa_samples, &this->physical_device);
-    if (create_render_pass(render_pass_settings) != 0) return;
-   
+    render_pass_t* render_pass = new render_pass_t();
+    render_pass->init(render_pass_settings, this->device->device);
+
     if (create_command_pool() != 0) return;
 
     image_settings_t color_buffer_settings;
@@ -655,10 +657,13 @@ vulkan_context_t::vulkan_context_t(std::string name)
     this->depth_buffer = new image_t(&this->physical_device, &this->command_pool);
     if (this->depth_buffer->init_depth_buffer(depth_buffer_settings, this->swap_chain->extent, this->device) != 0) return;
 
-    if (create_framebuffers() != 0) return;
-    
-    this->command_buffers = new command_buffers_t();
-    if (this->command_buffers->init(this->command_pool, &(this->device->device)) != 0) return;
+    for (std::uint32_t i = 0; i < this->swap_chain->image_views.size(); ++i)
+    {
+        std::vector<framebuffer_attachment_t> attachments = { {&this->color_buffer, IMAGE}, {&this->depth_buffer, IMAGE}, {&this->swap_chain, SWAP_CHAIN, i} };
+        render_pass->add_framebuffer(this->swap_chain->extent.width, this->swap_chain->extent.height, attachments);
+    }
+    this->render_passes.push_back(render_pass);
+
     if (create_sync_objects() != 0) return;
 
     this->initialized = true;
@@ -702,19 +707,15 @@ vulkan_context_t::~vulkan_context_t()
     vkDestroyCommandPool(this->device->device, this->command_pool, nullptr);
     std::cout << "Destroying Command Pool!" << std::endl;
     
-    for (VkFramebuffer fb : this->swap_chain_framebuffers)
-    {
-        vkDestroyFramebuffer(this->device->device, fb, nullptr);
-    }
-    std::cout << "Destroying Framebuffer(s)!" << std::endl;
-    
     for (graphics_pipeline_t* pipeline : this->graphics_pipelines)
     {
         delete pipeline;
     }
     
-    vkDestroyRenderPass(this->device->device, this->render_pass, nullptr);
-    std::cout << "Destroying Render Pass!" << std::endl;
+    for (render_pass_t* render_pass : this->render_passes)
+    {
+        delete render_pass;
+    }
     
     delete this->swap_chain;
     delete this->device;

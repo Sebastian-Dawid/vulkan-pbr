@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <vulkan/vulkan_core.h>
+#include "vulkan_render_pass.h"
 #include "vulkan_logical_device.h"
 
 struct pipeline_shaders_t
@@ -31,8 +32,9 @@ struct pipeline_settings_t
     VkPipelineDynamicStateCreateInfo dynamic_state{};
     std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
     VkPipelineDepthStencilStateCreateInfo depth_stencil{};
+    const render_pass_t* render_pass = nullptr;
 
-    void populate_defaults(const std::vector<VkDescriptorSetLayout>& descriptor_set_layputs);
+    void populate_defaults(const std::vector<VkDescriptorSetLayout>& descriptor_set_layputs, render_pass_t* render_pass, std::uint32_t color_attachment_count = 1);
 };
 
 class graphics_pipeline_t
@@ -40,13 +42,13 @@ class graphics_pipeline_t
     private:
         const VkDevice* device = nullptr;
         const VkAllocationCallbacks* allocator = nullptr;
-        const VkRenderPass* render_pass = nullptr;
         VkExtent2D swap_chain_extent;
         std::optional<VkShaderModule> create_shader_module(const std::vector<char>& code, VkDevice device);
     public:
         VkPipelineLayout pipeline_layout;
         VkPipeline pipeline;
+        const render_pass_t* render_pass = nullptr;
         std::int32_t init(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings, const logical_device_t* device);
-        graphics_pipeline_t(const VkRenderPass* render_pass, VkExtent2D swap_chain_extent);
+        graphics_pipeline_t(const render_pass_t* render_pass, VkExtent2D swap_chain_extent);
         ~graphics_pipeline_t();
 };

@@ -58,20 +58,19 @@ $(IMGUI_BUILD)/%.cpp.o: %.cpp
 
 .PHONY: test clean release build_debug build_release
 
-test: CFLAGS += -g
-test: clean $(BUILD_DIR)/$(TARGET_EXEC)
-	$(BUILD_DIR)/$(TARGET_EXEC)
-
 clean:
 	rm -rf $(BUILD_DIR)
 
-release: CFLAGS += -DNDEBUG -O3
-release: clean test
+test: clean build_debug
+	$(BUILD_DIR)/$(TARGET_EXEC)
 
 build_debug: CFLAGS += -g
-build_debug: clean $(BUILD_DIR)/$(TARGET_EXEC)
+build_debug: $(OBJS) $(SHADER_OBJS) $(BUILD_DIR)/$(TARGET_EXEC)
 
-build_release: CFLAGS += -DNDEBUG -O3
+release: clean build_release
+	$(BUILD_DIR)/$(TARGET_EXEC)
+
+build_release: CFLAGS += -DNDEBUG -DPORTABILITY -O3
 build_release: clean $(BUILD_DIR)/$(TARGET_EXEC)
 
 -include $(DEPS)

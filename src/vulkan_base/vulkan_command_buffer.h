@@ -20,7 +20,7 @@ class command_buffers_t
 {
     public:
         std::vector<VkCommandBuffer> command_buffers;
-        std::int32_t init(const VkCommandPool& command_pool, const VkDevice* device);
+        std::int32_t init(const VkCommandPool& command_pool, const VkDevice* device, const std::uint32_t nr_buffers);
         std::int32_t record(std::uint32_t buffer, const recording_settings_t& settings);
         command_buffers_t();
         ~command_buffers_t();

@@ -16,9 +16,9 @@ void recording_settings_t::populate_defaults(VkRenderPass render_pass, VkFramebu
     this->pipeline = pipeline;
 }
 
-std::int32_t command_buffers_t::init(const VkCommandPool& command_pool, const VkDevice* device)
+std::int32_t command_buffers_t::init(const VkCommandPool& command_pool, const VkDevice* device, const std::uint32_t nr_buffers)
 {
-    this->command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+    this->command_buffers.resize(MAX_FRAMES_IN_FLIGHT * nr_buffers);
 
     VkCommandBufferAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;

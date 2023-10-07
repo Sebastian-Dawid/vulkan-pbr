@@ -12,43 +12,21 @@
 #include "vulkan_constants.h"
 #include "vulkan_descriptor_pool.h"
 #include "vulkan_image.h"
+#include "vulkan_render_pass.h"
 
 #include <string>
-
-struct render_pass_settings_t
-{
-    std::vector<VkAttachmentDescription> attachments;
-    std::vector<VkAttachmentReference> color_attachment_references;
-    std::vector<VkSubpassDescription> subpasses;
-    std::vector<VkSubpassDependency> dependencies;
-    VkAttachmentReference depth_attachment_reference;
-    VkAttachmentReference color_attachment_resolve_reference;
-
-    void populate_defaults(VkFormat format, VkSampleCountFlagBits msaa_samples, const VkPhysicalDevice* physical_device);
-};
 
 class vulkan_context_t
 {
     private:
-        VkInstance instance;
-        VkPhysicalDevice physical_device = VK_NULL_HANDLE;
-        logical_device_t* device;
         VkSurfaceKHR surface;
-        swap_chain_t* swap_chain;
-        VkRenderPass render_pass;
-        graphics_pipeline_t* current_pipeline;
-        std::vector<graphics_pipeline_t*> graphics_pipelines;
-        std::vector<VkFramebuffer> swap_chain_framebuffers;
-        VkCommandPool command_pool;
-        command_buffers_t* command_buffers;
+        graphics_pipeline_t* current_pipeline = nullptr;
+        command_buffers_t* command_buffers = nullptr;
         std::uint32_t current_frame = 0;
         std::vector<buffer_t*> buffers;
         std::vector<image_t*> images;
-        image_t* color_buffer;
-        image_t* depth_buffer;
         std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
         std::vector<descriptor_pool_t*> descriptor_pools;
-
 
         struct
         {
@@ -61,8 +39,6 @@ class vulkan_context_t
         std::int32_t create_instance(std::string name);
         std::int32_t pick_physical_device();
         std::int32_t create_surface();
-        std::int32_t create_render_pass(const render_pass_settings_t& settings);
-        std::int32_t create_framebuffers();
         std::int32_t create_command_pool();
         std::int32_t create_sync_objects();
         std::int32_t recreate_swap_chain();
@@ -76,12 +52,21 @@ class vulkan_context_t
         bool framebuffer_resized = false;
         bool initialized = false;
         VkSampleCountFlagBits msaa_samples = VK_SAMPLE_COUNT_1_BIT;
+        VkInstance instance;
+        VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+        logical_device_t* device = nullptr;
+        VkCommandPool command_pool;
+        swap_chain_t* swap_chain = nullptr;
+        std::vector<render_pass_t*> render_passes;
+        std::vector<graphics_pipeline_t*> graphics_pipelines;
+        image_t* color_buffer = nullptr;
+        image_t* depth_buffer = nullptr;
 
         std::int32_t add_descriptor_set_layout(const std::vector<VkDescriptorSetLayoutBinding> layout_bindings = { UBO_LAYOUT_BINDING, SAMPLER_LAYOUT_BINDING });
         std::int32_t add_pipeline(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings);
-        std::int32_t set_active_pipeline(std::uint32_t index);
         std::int32_t add_buffer(const buffer_settings_t& settings);
         std::int32_t add_image(const std::string& path, const image_settings_t& settings, bool flip = false);
+        std::optional<VkFramebuffer> add_framebuffer(VkRenderPass render_passs, std::vector<VkImageView> attachemnts);
         buffer_t* get_buffer(std::uint32_t index);
         buffer_t* get_last_buffer();
         std::uint32_t get_buffer_count();

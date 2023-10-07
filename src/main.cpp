@@ -73,31 +73,52 @@ int main()
     VkDescriptorSetLayoutBinding phong_layout_binding = { 2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
     std::vector<VkDescriptorSetLayoutBinding> bindings = { UBO_LAYOUT_BINDING, SAMPLER_LAYOUT_BINDING, phong_layout_binding };
 
+    
+    std::vector<image_t*> g_buffer;
+    image_settings_t g_buffer_settings;
+    g_buffer_settings.sample_count = VK_SAMPLE_COUNT_8_BIT;
+    g_buffer_settings.format = vk_context.swap_chain->format.format;
+    g_buffer_settings.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    // POS
+    g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
+    g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
+    // NORMAL
+    g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
+    g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
+    // ALBEDO
+    g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
+    g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
+
+    render_pass_settings_t render_pass_settings;
+    render_pass_settings.populate_defaults(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_8_BIT, &vk_context.physical_device, 3, 1, 0);
+    render_pass_t* g_render_pass = new render_pass_t();
+    g_render_pass->init(render_pass_settings, vk_context.device->device);
+
+    VkExtent2D swap_chain_extent = vk_context.get_swap_chain_extent();
+    std::vector<framebuffer_attachment_t> g_attachments = { {&g_buffer[0], IMAGE}, {&g_buffer[1], IMAGE}, {&g_buffer[2], IMAGE}, {&vk_context.depth_buffer, IMAGE} };
+    g_render_pass->add_framebuffer(swap_chain_extent.width, swap_chain_extent.height, g_attachments);
+
+    vk_context.render_passes.push_back(g_render_pass);
+
+    vk_context.add_descriptor_set_layout(bindings);
+    pipeline_shaders_t g_shaders = { "./build/target/shaders/g_buffer.vert.spv", std::nullopt, "./build/target/shaders/g_buffer.frag.spv" };
+    pipeline_settings_t g_pipeline_settings;
+    g_pipeline_settings.populate_defaults(vk_context.get_descriptor_set_layouts(), vk_context.render_passes[1], 3);
+    g_pipeline_settings.multisampling.rasterizationSamples = vk_context.msaa_samples;
+    if (vk_context.add_pipeline(g_shaders, g_pipeline_settings) != 0) return -1;
+    
     vk_context.add_descriptor_set_layout(bindings);
     pipeline_shaders_t shaders = { "./build/target/shaders/main.vert.spv", std::nullopt, "./build/target/shaders/main.frag.spv" };
     pipeline_settings_t pipeline_settings;
-    pipeline_settings.populate_defaults(vk_context.get_descriptor_set_layouts());
+    pipeline_settings.populate_defaults(vk_context.get_descriptor_set_layouts(), vk_context.render_passes[0]);
     pipeline_settings.multisampling.rasterizationSamples = vk_context.msaa_samples;
     if (vk_context.add_pipeline(shaders, pipeline_settings) != 0) return -1;
-    vk_context.set_active_pipeline(0);
 
-    descriptor_pool_t* pool = (*vk_context.get_descriptor_pools())[0];
-    pool->configure_descriptors(descriptor_config);
+    std::vector<descriptor_pool_t*> pools = *vk_context.get_descriptor_pools();
+    std::for_each(pools.begin(), pools.end(), [&] (descriptor_pool_t* pool) { pool->configure_descriptors(descriptor_config); });
 
     std::function<void(VkCommandBuffer, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, vulkan_context_t* context)
     {
-        static std::chrono::time_point start_time = std::chrono::high_resolution_clock::now();
-        std::chrono::time_point current_time = std::chrono::high_resolution_clock::now();
-        float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-        static blinn_phong_t blinn_phong = { {0.0f, 5.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {10.0f, 0.0f, 0.0f} };
-        std::memcpy(blinn_phong_buffers[context->get_current_frame()]->mapped_memory, &blinn_phong, sizeof(blinn_phong_t));
-        static ubo_t ubo;
-        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        ubo.view = glm::lookAt(glm::vec3(10.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        ubo.projection = glm::perspective(glm::radians(45.0f), context->get_swap_chain_extent().width / (float) context->get_swap_chain_extent().height, 0.1f, 100.0f);
-        ubo.projection[1][1] *= -1;
-        std::memcpy(ubo_buffers[context->get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
-
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -126,12 +147,27 @@ int main()
         while (!glfwWindowShouldClose(vk_context.window))
         {
             glfwPollEvents();
+
+            static std::chrono::time_point start_time = std::chrono::high_resolution_clock::now();
+            std::chrono::time_point current_time = std::chrono::high_resolution_clock::now();
+            float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+            static blinn_phong_t blinn_phong = { {4.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {10.0f, 0.0f, 0.0f} };
+            std::memcpy(blinn_phong_buffers[vk_context.get_current_frame()]->mapped_memory, &blinn_phong, sizeof(blinn_phong_t));
+            static ubo_t ubo;
+            ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            ubo.view = glm::lookAt(glm::vec3(10.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            ubo.projection = glm::perspective(glm::radians(45.0f), vk_context.get_swap_chain_extent().width / (float) vk_context.get_swap_chain_extent().height, 0.1f, 100.0f);
+            ubo.projection[1][1] *= -1;
+            std::memcpy(ubo_buffers[vk_context.get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
+            
             if (vk_context.draw_frame(draw_command) != 0)
             {
                 break;
             }
         }
     });
+
+    std::for_each(g_buffer.begin(), g_buffer.end(), [] (image_t* img) { delete img; } );
 
     glfwTerminate();
     return 0;
