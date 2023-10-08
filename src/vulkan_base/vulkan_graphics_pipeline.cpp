@@ -172,7 +172,7 @@ std::int32_t graphics_pipeline_t::init(const pipeline_shaders_t& shaders, const 
     create_info.pDynamicState = &settings.dynamic_state;
     create_info.layout = this->pipeline_layout;
     create_info.renderPass = this->render_pass->render_pass;
-    create_info.subpass = 0;
+    create_info.subpass = settings.subpass;
 
     if (vkCreateGraphicsPipelines(device->device, VK_NULL_HANDLE, 1, &create_info, this->allocator, &(this->pipeline)) != VK_SUCCESS)
     {

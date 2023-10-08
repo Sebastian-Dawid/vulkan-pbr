@@ -76,7 +76,7 @@ class vulkan_context_t
         std::vector<descriptor_pool_t*>* get_descriptor_pools();
         void bind_descriptor_sets(VkCommandBuffer command_buffer, std::uint32_t pool_index, std::uint32_t first_set);
         
-        std::int32_t draw_frame(std::function<void(VkCommandBuffer, vulkan_context_t*)> func);
+        std::int32_t draw_frame();
         void main_loop(std::function<void()> func);
         VkExtent2D get_swap_chain_extent();
         vulkan_context_t(std::string name);

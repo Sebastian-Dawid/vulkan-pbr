@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <cstdint>
 #include <string>
@@ -33,6 +34,7 @@ struct pipeline_settings_t
     std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
     VkPipelineDepthStencilStateCreateInfo depth_stencil{};
     const render_pass_t* render_pass = nullptr;
+    std::uint32_t subpass = 0;
 
     void populate_defaults(const std::vector<VkDescriptorSetLayout>& descriptor_set_layputs, render_pass_t* render_pass, std::uint32_t color_attachment_count = 1);
 };
@@ -47,6 +49,8 @@ class graphics_pipeline_t
     public:
         VkPipelineLayout pipeline_layout;
         VkPipeline pipeline;
+        std::function<void(VkCommandBuffer, std::uint32_t, void*)> draw_command;
+
         const render_pass_t* render_pass = nullptr;
         std::int32_t init(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings, const logical_device_t* device);
         graphics_pipeline_t(const render_pass_t* render_pass, VkExtent2D swap_chain_extent);

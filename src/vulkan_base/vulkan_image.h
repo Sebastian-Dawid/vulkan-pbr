@@ -50,8 +50,6 @@ class image_t
         image_settings_t settings{};
 
         std::int32_t create_image(std::uint32_t width, std::uint32_t height, VkImage& image, VkDeviceMemory& memory);
-        std::int32_t create_image_sampler(const sampler_settings_t& settings);
-        std::int32_t transition_image_layout(VkImageLayout layout);
         void copy_buffer_to_image(VkBuffer buffer);
         std::int32_t generate_mipmaps();
 
@@ -68,6 +66,8 @@ class image_t
         std::int32_t init_texture(const std::string& path, const image_settings_t& settings, const logical_device_t* device, bool flip = false);
         std::int32_t init_depth_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device);
         std::int32_t init_color_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device);
+        std::int32_t create_image_sampler(const sampler_settings_t& settings);
+        std::int32_t transition_image_layout(VkImageLayout layout);
         image_t(const VkPhysicalDevice* physical_device, const VkCommandPool* command_pool);
         ~image_t();
 };
