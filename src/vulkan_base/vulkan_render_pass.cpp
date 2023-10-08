@@ -4,7 +4,8 @@
 #include <iostream>
 
 void render_pass_settings_t::add_subpass(VkFormat format, VkSampleCountFlagBits msaa_samples, const VkPhysicalDevice* physical_device,
-        std::uint32_t color_attachment_count, std::uint32_t depth_attachment_count, std::uint32_t color_resolve_attachment_count)
+        std::uint32_t color_attachment_count, std::uint32_t depth_attachment_count, std::uint32_t color_resolve_attachment_count,
+        std::uint32_t input_attachment_count)
 {
     this->subpasses.push_back(subpass_t());
     subpass_t& subpass = this->subpasses.back();
@@ -65,11 +66,21 @@ void render_pass_settings_t::add_subpass(VkFormat format, VkSampleCountFlagBits 
         VkAttachmentReference color_attachment_resolve_reference{};
         color_attachment_resolve_reference.attachment = static_cast<std::uint32_t>(this->attachments.size());
         color_attachment_resolve_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        
         subpass.color_attachment_resolve_references.push_back(color_attachment_resolve_reference);
         subpass.description.pResolveAttachments = subpass.color_attachment_resolve_references.data();
         this->attachments.push_back(color_attachment_resolve);
     }
 
+    for (std::uint32_t i = 0; i < input_attachment_count; ++i)
+    {
+        VkAttachmentReference input_attachment_reference{};
+        input_attachment_reference.attachment = i;
+        input_attachment_reference.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        subpass.input_attachment_references.push_back(input_attachment_reference);
+        subpass.description.pInputAttachments = subpass.input_attachment_references.data();
+    }
+    subpass.description.inputAttachmentCount = static_cast<std::uint32_t>(input_attachment_count);
 
     VkSubpassDependency dependency{};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -78,7 +89,7 @@ void render_pass_settings_t::add_subpass(VkFormat format, VkSampleCountFlagBits 
     dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     dependency.srcAccessMask = 0;
     dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    dependency.dependencyFlags = 0;
+    dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     this->dependencies.push_back(dependency);
 }
 
@@ -111,18 +122,20 @@ std::int32_t render_pass_t::init(const render_pass_settings_t& settings, const V
 std::int32_t render_pass_t::add_framebuffer(std::uint32_t width, std::uint32_t height, std::vector<framebuffer_attachment_t> attachments)
 {
     VkFramebuffer fb;
-    std::vector<VkImageView> attachments_views;
+    std::vector<VkImageView> attachments_views(static_cast<std::uint32_t>(attachments.size()));
+    std::uint32_t index = 0;
     for (framebuffer_attachment_t attachment : attachments)
     {
         switch (attachment.type)
         {
             case IMAGE:
-                attachments_views.push_back((*((image_t**) attachment.source))->view);
+                attachments_views[index] = (((image_t*) attachment.source)->view);
                 break;
             case SWAP_CHAIN:
-                attachments_views.push_back((*((swap_chain_t**) attachment.source))->image_views[attachment.index]);
+                attachments_views[index] = ((*((swap_chain_t**) attachment.source))->image_views[attachment.index]);
                 break;
         }
+        ++index;
     }
     VkFramebufferCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -152,7 +165,7 @@ std::int32_t render_pass_t::recreate_framebuffer(std::uint32_t index, std::uint3
         switch (attachment.type)
         {
             case IMAGE:
-                attachments_views.push_back((*((image_t**) attachment.source))->view);
+                attachments_views.push_back(((image_t*) attachment.source)->view);
                 break;
             case SWAP_CHAIN:
                 attachments_views.push_back((*((swap_chain_t**) attachment.source))->image_views[attachment.index]);

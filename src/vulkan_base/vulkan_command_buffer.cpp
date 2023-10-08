@@ -3,8 +3,7 @@
 
 #include <iostream>
 
-void recording_settings_t::populate_defaults(VkRenderPass render_pass, VkFramebuffer framebuffer, VkExtent2D extent, VkPipeline pipeline,
-        const std::vector<VkClearValue>& clear_colors)
+void recording_settings_t::populate_defaults(VkRenderPass render_pass, VkFramebuffer framebuffer, VkExtent2D extent, const std::vector<VkClearValue>& clear_colors)
 {
     this->render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     this->render_pass_info.renderPass = render_pass;
@@ -13,7 +12,6 @@ void recording_settings_t::populate_defaults(VkRenderPass render_pass, VkFramebu
     this->render_pass_info.renderArea.offset = { 0, 0 };
     this->render_pass_info.clearValueCount = static_cast<std::uint32_t>(clear_colors.size());
     this->render_pass_info.pClearValues = clear_colors.data();
-    this->pipeline = pipeline;
 }
 
 std::int32_t command_buffers_t::init(const VkCommandPool& command_pool, const VkDevice* device, const std::uint32_t nr_buffers)
@@ -46,7 +44,6 @@ std::int32_t command_buffers_t::record(std::uint32_t buffer, const recording_set
     }
 
     vkCmdBeginRenderPass(this->command_buffers[buffer], &settings.render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(this->command_buffers[buffer], settings.bind_point, settings.pipeline);
     settings.draw_command(this->command_buffers[buffer]);
     vkCmdEndRenderPass(this->command_buffers[buffer]);
 

@@ -11,6 +11,7 @@ struct subpass_t
     std::vector<VkAttachmentReference> color_attachment_references;
     std::vector<VkAttachmentReference> depth_attachment_reference = {{}};
     std::vector<VkAttachmentReference> color_attachment_resolve_references;
+    std::vector<VkAttachmentReference> input_attachment_references;
 };
 
 struct render_pass_settings_t
@@ -20,7 +21,8 @@ struct render_pass_settings_t
     std::vector<VkSubpassDependency> dependencies;
 
     void add_subpass(VkFormat format, VkSampleCountFlagBits msaa_samples, const VkPhysicalDevice* physical_device,
-            std::uint32_t color_attachment_count = 1, std::uint32_t depth_attachment_count = 1, std::uint32_t color_attachment_resolve_count = 1);
+            std::uint32_t color_attachment_count = 1, std::uint32_t depth_attachment_count = 0, std::uint32_t color_attachment_resolve_count = 0,
+            std::uint32_t input_attachmnet_count = 0);
 };
 
 enum attachment_type_t

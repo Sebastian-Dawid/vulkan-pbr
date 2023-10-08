@@ -98,36 +98,33 @@ int main()
 
     std::vector<VkDescriptorSetLayoutBinding> g_bindings = { UBO_LAYOUT_BINDING, SAMPLER_LAYOUT_BINDING };
 
-    VkDescriptorSetLayoutBinding pos_sampler_binding = { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
-    VkDescriptorSetLayoutBinding normal_sampler_binding = { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
-    VkDescriptorSetLayoutBinding albedo_sampler_binding = { 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
+    VkDescriptorSetLayoutBinding g_pos_binding = { 0, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
+    VkDescriptorSetLayoutBinding g_normal_binding = { 1, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
+    VkDescriptorSetLayoutBinding g_albedo_binding = { 2, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
     VkDescriptorSetLayoutBinding phong_layout_binding = { 3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
-    std::vector<VkDescriptorSetLayoutBinding> out_bindings = { pos_sampler_binding, normal_sampler_binding, albedo_sampler_binding, phong_layout_binding };
+    std::vector<VkDescriptorSetLayoutBinding> out_bindings = { g_pos_binding, g_normal_binding, g_albedo_binding, phong_layout_binding };
 
     
     std::vector<image_t*> g_buffer;
     image_settings_t g_buffer_settings;
     g_buffer_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
     g_buffer_settings.format = vk_context.swap_chain->format.format;
-    g_buffer_settings.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    g_buffer_settings.usage = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     sampler_settings_t sampler_settings;
     // POS
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
     g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    g_buffer.back()->create_image_sampler(sampler_settings);
 
     // NORMAL
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
     g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    g_buffer.back()->create_image_sampler(sampler_settings);
 
     // ALBEDO
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
     g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    g_buffer.back()->create_image_sampler(sampler_settings);
    
     image_settings_t g_depth_settings;
     g_depth_settings.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -137,28 +134,45 @@ int main()
 
 
     image_t* g_pos = g_buffer[0];
-    descriptor_config.push_back(std::make_tuple(0, 0, g_pos, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
+    descriptor_config.push_back(std::make_tuple(0, 0, g_pos, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
     image_t* g_normal = g_buffer[1];
-    descriptor_config.push_back(std::make_tuple(1, 0, g_normal, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
+    descriptor_config.push_back(std::make_tuple(1, 0, g_normal, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
     image_t* g_albedo = g_buffer[2];
-    descriptor_config.push_back(std::make_tuple(2, 0, g_albedo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
-
-    render_pass_settings_t g_render_pass_settings;
-    g_render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 3, 1, 0);
-    render_pass_t* g_render_pass = new render_pass_t();
-    g_render_pass->init(g_render_pass_settings, vk_context.device->device);
-    VkExtent2D swap_chain_extent = vk_context.get_swap_chain_extent();
-    std::vector<framebuffer_attachment_t> g_attachments = { {&g_buffer[0], IMAGE}, {&g_buffer[1], IMAGE}, {&g_buffer[2], IMAGE}, {&g_buffer[3], IMAGE} };
-    g_render_pass->add_framebuffer(swap_chain_extent.width, swap_chain_extent.height, g_attachments);
-    vk_context.render_passes.push_back(g_render_pass);
+    descriptor_config.push_back(std::make_tuple(2, 0, g_albedo, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
 
     render_pass_settings_t render_pass_settings;
-    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, vk_context.msaa_samples, &vk_context.physical_device);
+    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 3, 1, 0);
+    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 0, 0, 3);
+    render_pass_settings.attachments.back().finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    {
+        VkSubpassDependency& dep = render_pass_settings.dependencies.back();
+        dep.srcSubpass = VK_SUBPASS_EXTERNAL;
+        dep.dstSubpass = 0;
+        dep.srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dep.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    }
+
+    VkSubpassDependency dep{};
+    dep.srcSubpass = 0;
+    dep.dstSubpass = 1;
+    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dep.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+    dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    render_pass_settings.dependencies.push_back(dep);
+
     render_pass_t* render_pass = new render_pass_t();
     render_pass->init(render_pass_settings, vk_context.device->device);
     for (std::uint32_t i = 0; i < vk_context.swap_chain->image_views.size(); ++i)
     {
-        std::vector<framebuffer_attachment_t> attachments = { {&vk_context.color_buffer, IMAGE}, {&vk_context.depth_buffer, IMAGE}, {&vk_context.swap_chain, SWAP_CHAIN, i} };
+        std::vector<framebuffer_attachment_t> attachments = { {g_buffer[0], IMAGE}, {g_buffer[1], IMAGE}, {g_buffer[2], IMAGE}, {g_buffer[3], IMAGE},
+            /*{&vk_context.color_buffer, IMAGE}, {&vk_context.depth_buffer, IMAGE},*/ {&vk_context.swap_chain, SWAP_CHAIN, i} };
         render_pass->add_framebuffer(vk_context.swap_chain->extent.width, vk_context.swap_chain->extent.height, attachments);
     }
     vk_context.render_passes.push_back(render_pass);
@@ -167,127 +181,76 @@ int main()
     pipeline_shaders_t g_shaders = { "./build/target/shaders/g_buffer.vert.spv", std::nullopt, "./build/target/shaders/g_buffer.frag.spv" };
     pipeline_settings_t g_pipeline_settings;
     g_pipeline_settings.populate_defaults(vk_context.get_descriptor_set_layouts(), vk_context.render_passes[0], 3);
+    //g_pipeline_settings.multisampling.rasterizationSamples = vk_context.msaa_samples;
     if (vk_context.add_pipeline(g_shaders, g_pipeline_settings) != 0) return -1;
     
     vk_context.add_descriptor_set_layout(out_bindings);
     pipeline_shaders_t shaders = { "./build/target/shaders/main.vert.spv", std::nullopt, "./build/target/shaders/main.frag.spv" };
     pipeline_settings_t pipeline_settings;
-    pipeline_settings.populate_defaults({ vk_context.get_descriptor_set_layouts()[1] }, vk_context.render_passes[1]);
-    pipeline_settings.multisampling.rasterizationSamples = vk_context.msaa_samples;
+    pipeline_settings.populate_defaults({ vk_context.get_descriptor_set_layouts()[1] }, vk_context.render_passes[0]);
+    pipeline_settings.subpass = 1;
     if (vk_context.add_pipeline(shaders, pipeline_settings) != 0) return -1;
 
     std::vector<descriptor_pool_t*> pools = *vk_context.get_descriptor_pools();
     pools[0]->configure_descriptors(g_descriptor_config);
     pools[1]->configure_descriptors(descriptor_config);
 
-    std::function<void(VkCommandBuffer, std::uint32_t, void*)> g_draw_command = [&] (VkCommandBuffer command_buffer, std::uint32_t pool_index, void* ptr)
+    std::function<void(VkCommandBuffer, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, vulkan_context_t* context)
     {
-        vulkan_context_t* context = (vulkan_context_t*) ptr;
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = static_cast<float>(context->get_swap_chain_extent().width);
-        viewport.height = static_cast<float>(context->get_swap_chain_extent().height);
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-
-        VkRect2D scissor{};
-        scissor.offset = { 0, 0 };
-        scissor.extent = context->get_swap_chain_extent();
-        vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-
-        VkBuffer vertex_buffers[] = { g_vertex_buffer->buffer };
-        VkDeviceSize offsets[] = { 0 };
-        vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
-        vkCmdBindIndexBuffer(command_buffer, g_index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
-        context->bind_descriptor_sets(command_buffer, pool_index, 0);
-
-        vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(model.indices.size()), 1, 0, 0, 0);
-
-        for (std::uint32_t i = 0; i < 3; ++i)
         {
-            VkImageMemoryBarrier barrier{};
-            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image = g_buffer[i]->image;
-            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            barrier.subresourceRange.baseMipLevel = 0;
-            barrier.subresourceRange.levelCount = 1;
-            barrier.subresourceRange.baseArrayLayer = 0;
-            barrier.subresourceRange.layerCount = 1;
-            barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->graphics_pipelines[0]->pipeline);
+            context->current_pipeline = context->graphics_pipelines[0];
+            VkViewport viewport{};
+            viewport.x = 0.0f;
+            viewport.y = 0.0f;
+            viewport.width = static_cast<float>(context->get_swap_chain_extent().width);
+            viewport.height = static_cast<float>(context->get_swap_chain_extent().height);
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
+            vkCmdSetViewport(command_buffer, 0, 1, &viewport);
 
-            VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            VkRect2D scissor{};
+            scissor.offset = { 0, 0 };
+            scissor.extent = context->get_swap_chain_extent();
+            vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-            vkCmdPipelineBarrier(command_buffer,
-                    src_stage, dst_stage,
-                    0, 
-                    0, nullptr,
-                    0, nullptr,
-                    1, &barrier);
+            VkBuffer vertex_buffers[] = { g_vertex_buffer->buffer };
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+            vkCmdBindIndexBuffer(command_buffer, g_index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
+            context->bind_descriptor_sets(command_buffer, 0, 0);
+
+            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(model.indices.size()), 1, 0, 0, 0);
+        }
+
+        vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
+
+        {
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->graphics_pipelines[1]->pipeline);
+            context->current_pipeline = context->graphics_pipelines[1];
+            VkViewport viewport{};
+            viewport.x = 0.0f;
+            viewport.y = 0.0f;
+            viewport.width = static_cast<float>(context->get_swap_chain_extent().width);
+            viewport.height = static_cast<float>(context->get_swap_chain_extent().height);
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
+            vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+            VkRect2D scissor{};
+            scissor.offset = { 0, 0 };
+            scissor.extent = context->get_swap_chain_extent();
+            vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+            VkBuffer vertex_buffers[] = { vertex_buffer->buffer };
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+            vkCmdBindIndexBuffer(command_buffer, index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
+            context->bind_descriptor_sets(command_buffer, 1, 0);
+
+            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
         }
     };
-    vk_context.graphics_pipelines[0]->draw_command = g_draw_command;
-
-    std::function<void(VkCommandBuffer, std::uint32_t, void*)> draw_command = [&] (VkCommandBuffer command_buffer, std::uint32_t pool_index, void* ptr)
-    {
-
-        /*for (std::uint32_t i = 0; i < 3; ++i)
-        {
-            VkImageMemoryBarrier barrier{};
-            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image = g_buffer[i]->image;
-            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            barrier.subresourceRange.baseMipLevel = 0;
-            barrier.subresourceRange.levelCount = 1;
-            barrier.subresourceRange.baseArrayLayer = 0;
-            barrier.subresourceRange.layerCount = 1;
-            barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-            VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-
-            vkCmdPipelineBarrier(command_buffer,
-                    src_stage, dst_stage,
-                    0, 
-                    0, nullptr,
-                    0, nullptr,
-                    1, &barrier);
-        }*/
-
-        vulkan_context_t* context = (vulkan_context_t*) ptr;
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = static_cast<float>(context->get_swap_chain_extent().width);
-        viewport.height = static_cast<float>(context->get_swap_chain_extent().height);
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-
-        VkRect2D scissor{};
-        scissor.offset = { 0, 0 };
-        scissor.extent = context->get_swap_chain_extent();
-        vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-
-        VkBuffer vertex_buffers[] = { vertex_buffer->buffer };
-        VkDeviceSize offsets[] = { 0 };
-        vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
-        vkCmdBindIndexBuffer(command_buffer, index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
-        context->bind_descriptor_sets(command_buffer, pool_index, 0);
-
-        vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
-    };
-    vk_context.graphics_pipelines[1]->draw_command = draw_command;
 
     vk_context.main_loop([&]
     {
@@ -307,7 +270,7 @@ int main()
             ubo.projection[1][1] *= -1;
             std::memcpy(ubo_buffers[vk_context.get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
             
-            if (vk_context.draw_frame() != 0)
+            if (vk_context.draw_frame(draw_command) != 0)
             {
                 break;
             }

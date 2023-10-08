@@ -58,7 +58,7 @@ class image_t
         std::uint32_t height;
         VkImage image;
         VkImageView view;
-        VkSampler sampler;
+        VkSampler sampler = VK_NULL_HANDLE;
         VkDeviceMemory memory;
         VkImageLayout layout;
         VkFormat format;

@@ -10,10 +10,9 @@ struct recording_settings_t
 {
     VkRenderPassBeginInfo render_pass_info{};
     VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    VkPipeline pipeline;
     std::function<void(VkCommandBuffer)> draw_command;
 
-    void populate_defaults(VkRenderPass render_pass, VkFramebuffer framebuffer, VkExtent2D extent, VkPipeline pipeline, const std::vector<VkClearValue>& clear_colors);
+    void populate_defaults(VkRenderPass render_pass, VkFramebuffer framebuffer, VkExtent2D extent, const std::vector<VkClearValue>& clear_colors);
 };
 
 class command_buffers_t

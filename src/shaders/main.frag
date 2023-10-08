@@ -2,9 +2,9 @@
 
 layout (location = 0) in vec2 frag_tex_coord;
 
-layout (binding = 0) uniform sampler2D g_pos;
-layout (binding = 1) uniform sampler2D g_normal;
-layout (binding = 2) uniform sampler2D g_albedo;
+layout (input_attachment_index = 0, binding = 0) uniform subpassInput g_pos;
+layout (input_attachment_index = 1, binding = 1) uniform subpassInput g_normal;
+layout (input_attachment_index = 2, binding = 2) uniform subpassInput g_albedo;
 
 layout (binding = 3) uniform light_t
 {
@@ -21,9 +21,9 @@ layout (location = 0) out vec4 out_color;
 
 void main()
 {
-    vec3 frag_pos = texture(g_pos, frag_tex_coord).rgb;
-    vec3 normal   = texture(g_normal, frag_tex_coord).rgb;
-    vec3 diffuse  = texture(g_albedo, frag_tex_coord).rgb;
+    vec3 frag_pos = subpassLoad(g_pos).rgb;
+    vec3 normal   = subpassLoad(g_normal).rgb;
+    vec3 diffuse  = subpassLoad(g_albedo).rgb;
 
     vec3 lighting = diffuse * 0.1; // ambient
     vec3 view_dir = normalize(light.view_pos - frag_pos);

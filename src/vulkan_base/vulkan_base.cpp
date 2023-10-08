@@ -354,7 +354,11 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
         for (std::vector<framebuffer_t> fb : render_pass->framebuffers)
         {
             std::uint32_t idx = 0;
-            std::for_each(fb.begin(), fb.end(), [&](framebuffer_t f){ render_pass->recreate_framebuffer(idx, this->swap_chain->extent.width, this->swap_chain->extent.height); ++idx; });
+            for (framebuffer_t f :  fb)
+            {
+                render_pass->recreate_framebuffer(idx, this->swap_chain->extent.width, this->swap_chain->extent.height);
+                ++idx; 
+            }
         }
     }
 
@@ -426,7 +430,7 @@ void vulkan_context_t::bind_descriptor_sets(VkCommandBuffer command_buffer, std:
             &this->descriptor_pools[pool_index]->sets[this->current_frame], 0, nullptr);
 }
 
-std::int32_t vulkan_context_t::draw_frame()
+std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vulkan_context_t*)> func)
 {
     vkWaitForFences(this->device->device, 1, &this->sync_objects.in_flight[this->current_frame], VK_TRUE, UINT64_MAX);
 
@@ -453,23 +457,16 @@ std::int32_t vulkan_context_t::draw_frame()
 
     std::vector<VkCommandBuffer> command_buffers;
     
-    std::uint32_t pipeline_index = 0;
-    for (graphics_pipeline_t* pipeline : this->graphics_pipelines)
-    {
-        std::uint32_t pipeline_offset = pipeline_index * MAX_FRAMES_IN_FLIGHT;
-        this->current_pipeline = pipeline;
-        recording_settings_t settings{};
-        settings.populate_defaults(pipeline->render_pass->render_pass, pipeline->render_pass->framebuffers[0][(pipeline_index == 1) ? image_index : 0].framebuffer,
-                this->swap_chain->extent, pipeline->pipeline, (pipeline_index == 1) ? CLEAR_COLORS : G_CLEAR_COLORS);
-        settings.draw_command = [&] (VkCommandBuffer command_buffer) { pipeline->draw_command(command_buffer, pipeline_index, this); };
+    recording_settings_t settings{};
+    settings.populate_defaults(this->render_passes[0]->render_pass, this->render_passes[0]->framebuffers[0][image_index].framebuffer,
+            this->swap_chain->extent, G_CLEAR_COLORS);
+    settings.draw_command = [&] (VkCommandBuffer command_buffer) { func(command_buffer, this); };
 
-        if (this->command_buffers->record(pipeline_offset + this->current_frame, settings) != 0)
-        {
-            return -1;
-        }
-        command_buffers.push_back(this->command_buffers->command_buffers[pipeline_offset + this->current_frame]);
-        ++pipeline_index;
+    if (this->command_buffers->record(this->current_frame, settings) != 0)
+    {
+        return -1;
     }
+    command_buffers.push_back(this->command_buffers->command_buffers[this->current_frame]);
 
     VkSubmitInfo submit_info{};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;

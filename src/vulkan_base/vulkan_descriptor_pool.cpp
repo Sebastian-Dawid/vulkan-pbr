@@ -26,6 +26,7 @@ void descriptor_pool_t::configure_descriptors(std::vector<std::tuple<std::uint32
             
             switch (std::get<3>(e))
             {
+                case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
                 case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
                     {
                         image_t* img = (image_t*) std::get<2>(e) + std::get<4>(e) * i;

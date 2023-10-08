@@ -20,7 +20,6 @@ class vulkan_context_t
 {
     private:
         VkSurfaceKHR surface;
-        graphics_pipeline_t* current_pipeline = nullptr;
         command_buffers_t* command_buffers = nullptr;
         std::uint32_t current_frame = 0;
         std::vector<buffer_t*> buffers;
@@ -59,6 +58,7 @@ class vulkan_context_t
         swap_chain_t* swap_chain = nullptr;
         std::vector<render_pass_t*> render_passes;
         std::vector<graphics_pipeline_t*> graphics_pipelines;
+        graphics_pipeline_t* current_pipeline = nullptr;
         image_t* color_buffer = nullptr;
         image_t* depth_buffer = nullptr;
 
@@ -76,7 +76,7 @@ class vulkan_context_t
         std::vector<descriptor_pool_t*>* get_descriptor_pools();
         void bind_descriptor_sets(VkCommandBuffer command_buffer, std::uint32_t pool_index, std::uint32_t first_set);
         
-        std::int32_t draw_frame();
+        std::int32_t draw_frame(std::function<void(VkCommandBuffer, vulkan_context_t*)>);
         void main_loop(std::function<void()> func);
         VkExtent2D get_swap_chain_extent();
         vulkan_context_t(std::string name);
