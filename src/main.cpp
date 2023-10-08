@@ -1,8 +1,10 @@
 #include "vulkan_base/vulkan_base.h"
 #include "vulkan_base/vulkan_vertex.h"
 #include "model_base/model_base.h"
+#include "command_line_parser/command_line_parser.h"
 #include <chrono>
 #include <cstring>
+#include <iostream>
 
 struct ubo_t
 {
@@ -29,10 +31,55 @@ std::vector<vertex_t> vertices = {
 };
 std::vector<std::uint32_t> indices = { 0, 1, 2, 2, 3, 0 };
 
-int main()
+int main(int argc, char** argv)
 {
 
-    vulkan_context_t vk_context("Vulkan Template");
+    std::uint32_t width = 1920, height = 1080;
+    if (argc == 1)
+    {
+        std::map<std::string, std::tuple<std::vector<value_type_t>, std::uint32_t>> allowed_args;
+        allowed_args["--help"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::NONE }, 0);
+        allowed_args["--width"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::UINT }, 1);
+        allowed_args["--height"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::UINT }, 1);
+        auto opt_res = parse_command_line_arguments(argc - 1, argv, allowed_args);
+        bool show_usage = false;
+
+        if (!opt_res.has_value())
+        {
+            show_usage = true;
+        }
+        else
+        {
+            auto res = opt_res.value();
+            if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--help") == 0; }) != res.end())
+            {
+                show_usage = true;
+            }
+        }
+        
+
+        if (show_usage)
+        {
+            std::cout << "usage: ./build/main [OPTIONS]" << std::endl;
+            std::cout << "\tOPTIONS:" << std::endl;
+            std::cout << "\t\t\"--help\":   show this message." << std::endl;
+            std::cout << "\t\t\"--width\":  specify the inital width of the window." << std::endl;
+            std::cout << "\t\t\"--height\": specify the inital height of the window." << std::endl;
+            return 0;
+        }
+        
+        auto res = opt_res.value();
+        if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--width") == 0; }) != res.end())
+        {
+            width = res["--width"][0].u;
+        }
+        if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--height") == 0; }) != res.end())
+        {
+            height = res["--height"][0].u;
+        }
+    }
+
+    vulkan_context_t vk_context("Vulkan Template", width, height);
     if (!vk_context.initialized)
     {
         glfwTerminate();
@@ -110,7 +157,6 @@ int main()
     g_buffer_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
     g_buffer_settings.format = vk_context.swap_chain->format.format;
     g_buffer_settings.usage = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    sampler_settings_t sampler_settings;
     // POS
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);

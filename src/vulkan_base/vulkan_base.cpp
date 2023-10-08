@@ -528,12 +528,12 @@ void vulkan_context_t::main_loop(std::function<void()> func)
     vkDeviceWaitIdle(this->device->device);
 }
 
-vulkan_context_t::vulkan_context_t(std::string name)
+vulkan_context_t::vulkan_context_t(std::string name, std::uint32_t width, std::uint32_t height)
 {
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-    this->window = glfwCreateWindow(1920, 1080, name.c_str(), nullptr, nullptr);
+    this->window = glfwCreateWindow(width, height, name.c_str(), nullptr, nullptr);
     glfwSetWindowUserPointer(this->window, this);
     glfwSetFramebufferSizeCallback(this->window, framebuffer_resize_callback);
 

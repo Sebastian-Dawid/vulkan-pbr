@@ -79,7 +79,7 @@ class vulkan_context_t
         std::int32_t draw_frame(std::function<void(VkCommandBuffer, vulkan_context_t*)>);
         void main_loop(std::function<void()> func);
         VkExtent2D get_swap_chain_extent();
-        vulkan_context_t(std::string name);
+        vulkan_context_t(std::string name, std::uint32_t width = 1920, std::uint32_t height = 1080);
         ~vulkan_context_t();
 };
 

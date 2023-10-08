@@ -1,0 +1,20 @@
+#include "command_line_parser.h"
+#include <algorithm>
+#include <iostream>
+
+int main(int argc, char** argv)
+{
+    if (argc == 1) return -1;
+    std::map<std::string, std::tuple<std::vector<value_type_t>, std::uint32_t>> allowed_args;
+    allowed_args["--help"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::NONE }, 0);
+    allowed_args["--test"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::NONE }, 1);
+
+    auto opt_res = parse_command_line_arguments(argc - 1, argv + 1, allowed_args);
+    if (!opt_res.has_value()) { std::cout << "error" << std::endl; return -1; }
+
+    auto res = opt_res.value();
+
+    std::for_each(res.begin(), res.end(), [](auto& e){ std::cout << e.first << std::endl; });
+
+    return 0;
+}
