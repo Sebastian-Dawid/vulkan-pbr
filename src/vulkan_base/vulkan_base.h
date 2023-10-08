@@ -59,8 +59,8 @@ class vulkan_context_t
         std::vector<render_pass_t*> render_passes;
         std::vector<graphics_pipeline_t*> graphics_pipelines;
         graphics_pipeline_t* current_pipeline = nullptr;
-        image_t* color_buffer = nullptr;
-        image_t* depth_buffer = nullptr;
+        std::vector<image_t*> color_buffers;
+        std::vector<image_t*> depth_buffers;
 
         std::int32_t add_descriptor_set_layout(const std::vector<VkDescriptorSetLayoutBinding> layout_bindings = { UBO_LAYOUT_BINDING, SAMPLER_LAYOUT_BINDING });
         std::int32_t add_pipeline(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings);

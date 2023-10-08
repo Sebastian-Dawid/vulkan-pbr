@@ -329,26 +329,40 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
     }
     vkDeviceWaitIdle(this->device->device);
 
-    delete this->color_buffer;
-    delete this->depth_buffer;
+    std::vector<image_settings_t> color_settings;
+    for (image_t* img : this->color_buffers)
+    {
+        color_settings.push_back(img->settings);
+        delete img;
+    }
+    std::vector<image_settings_t> depth_settings;
+    for (image_t* img : this->depth_buffers)
+    {
+        depth_settings.push_back(img->settings);
+        delete img;
+    }
+
     delete this->swap_chain;
 
     this->swap_chain = new swap_chain_t(this->physical_device, this->surface);
     if (this->swap_chain->init(this->device, this->surface, this->window) != 0) return -1;
-    
-    image_settings_t color_buffer_settings;
-    color_buffer_settings.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    color_buffer_settings.sample_count = this->msaa_samples;
-    color_buffer_settings.format = this->swap_chain->format.format;
-    this->color_buffer = new image_t(&this->physical_device, &this->command_pool);
-    if (this->color_buffer->init_color_buffer(color_buffer_settings, this->swap_chain->extent, this->device) != 0) return -1;
-    
-    image_settings_t depth_buffer_settings;
-    depth_buffer_settings.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depth_buffer_settings.sample_count = this->msaa_samples;
-    this->depth_buffer = new image_t(&this->physical_device, &this->command_pool);
-    if (this->depth_buffer->init_depth_buffer(depth_buffer_settings, this->swap_chain->extent, this->device) != 0) return -1;
-    
+   
+    std::uint32_t idx = 0;
+    for (image_settings_t settings : color_settings)
+    {
+        this->color_buffers[idx] = new image_t(&this->physical_device, &this->command_pool);
+        this->color_buffers[idx]->init_color_buffer(settings, this->get_swap_chain_extent(), this->device);
+        this->color_buffers[idx]->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        ++idx;
+    }
+    idx = 0;
+    for (image_settings_t settings : depth_settings)
+    {
+        this->depth_buffers[idx] = new image_t(&this->physical_device, &this->command_pool);
+        this->depth_buffers[idx]->init_depth_buffer(settings, this->get_swap_chain_extent(), this->device);
+        ++idx;
+    }
+
     for (render_pass_t* render_pass : this->render_passes)
     {
         for (std::vector<framebuffer_t> fb : render_pass->framebuffers)
@@ -360,6 +374,11 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
                 ++idx; 
             }
         }
+    }
+
+    for (descriptor_pool_t* pool : this->descriptor_pools)
+    {
+        pool->reconfigure();
     }
 
     return 0;
@@ -555,23 +574,8 @@ vulkan_context_t::vulkan_context_t(std::string name, std::uint32_t width, std::u
     
     this->swap_chain = new swap_chain_t(this->physical_device, this->surface);
     if (this->swap_chain->init(this->device, this->surface, this->window) != 0) return;
-    
 
     if (create_command_pool() != 0) return;
-
-    image_settings_t color_buffer_settings;
-    color_buffer_settings.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    color_buffer_settings.sample_count = this->msaa_samples;
-    color_buffer_settings.format = this->swap_chain->format.format;
-    this->color_buffer = new image_t(&this->physical_device, &this->command_pool);
-    if (this->color_buffer->init_color_buffer(color_buffer_settings, this->swap_chain->extent, this->device) != 0) return;
-
-    image_settings_t depth_buffer_settings;
-    depth_buffer_settings.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depth_buffer_settings.sample_count = this->msaa_samples;
-    this->depth_buffer = new image_t(&this->physical_device, &this->command_pool);
-    if (this->depth_buffer->init_depth_buffer(depth_buffer_settings, this->swap_chain->extent, this->device) != 0) return;
-
     if (create_sync_objects() != 0) return;
 
     this->initialized = true;
@@ -590,8 +594,11 @@ vulkan_context_t::~vulkan_context_t()
         delete img;
     }
 
-    delete this->color_buffer;
-    delete this->depth_buffer;
+    for (image_t* img : this->color_buffers)
+        delete img;
+
+    for (image_t* img : this->depth_buffers)
+        delete img;
 
     for (descriptor_pool_t* pool : this->descriptor_pools)
     {

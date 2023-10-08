@@ -34,14 +34,14 @@ std::vector<std::uint32_t> indices = { 0, 1, 2, 2, 3, 0 };
 int main(int argc, char** argv)
 {
 
-    std::uint32_t width = 1920, height = 1080;
-    if (argc == 1)
+    std::uint32_t width = 500, height = 500;
+    if (argc != 1)
     {
         std::map<std::string, std::tuple<std::vector<value_type_t>, std::uint32_t>> allowed_args;
         allowed_args["--help"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::NONE }, 0);
         allowed_args["--width"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::UINT }, 1);
         allowed_args["--height"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::UINT }, 1);
-        auto opt_res = parse_command_line_arguments(argc - 1, argv, allowed_args);
+        auto opt_res = parse_command_line_arguments(argc - 1, argv + 1, allowed_args);
         bool show_usage = false;
 
         if (!opt_res.has_value())
@@ -126,7 +126,7 @@ int main(int argc, char** argv)
     image_settings_t image_settings;
     if (vk_context.add_image("./models/backpack/albedo.jpg", image_settings, true) != 0) return -1;
     image_t* img = vk_context.get_image(0);
-    g_descriptor_config.push_back(std::make_tuple(1, 0, img, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
+    g_descriptor_config.push_back(std::make_tuple(1, 0, &img, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
 
     std::vector<buffer_t*> blinn_phong_buffers;
     for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
@@ -161,29 +161,32 @@ int main(int argc, char** argv)
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
     g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    vk_context.color_buffers.push_back(g_buffer.back());
 
     // NORMAL
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
     g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    vk_context.color_buffers.push_back(g_buffer.back());
 
     // ALBEDO
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
     g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    vk_context.color_buffers.push_back(g_buffer.back());
    
     image_settings_t g_depth_settings;
     g_depth_settings.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     g_depth_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_depth_buffer(g_depth_settings, vk_context.get_swap_chain_extent(), vk_context.device);
+    vk_context.depth_buffers.push_back(g_buffer.back());
 
-
-    image_t* g_pos = g_buffer[0];
+    image_t** g_pos = &vk_context.color_buffers[0];
     descriptor_config.push_back(std::make_tuple(0, 0, g_pos, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
-    image_t* g_normal = g_buffer[1];
+    image_t** g_normal = &vk_context.color_buffers[1];
     descriptor_config.push_back(std::make_tuple(1, 0, g_normal, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
-    image_t* g_albedo = g_buffer[2];
+    image_t** g_albedo = &vk_context.color_buffers[2];
     descriptor_config.push_back(std::make_tuple(2, 0, g_albedo, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
 
     render_pass_settings_t render_pass_settings;
@@ -217,7 +220,8 @@ int main(int argc, char** argv)
     render_pass->init(render_pass_settings, vk_context.device->device);
     for (std::uint32_t i = 0; i < vk_context.swap_chain->image_views.size(); ++i)
     {
-        std::vector<framebuffer_attachment_t> attachments = { {g_buffer[0], IMAGE}, {g_buffer[1], IMAGE}, {g_buffer[2], IMAGE}, {g_buffer[3], IMAGE},
+        std::vector<framebuffer_attachment_t> attachments = { {&vk_context.color_buffers[0], IMAGE}, {&vk_context.color_buffers[1], IMAGE},
+            {&vk_context.color_buffers[2], IMAGE}, {&vk_context.depth_buffers[0], IMAGE},
             /*{&vk_context.color_buffer, IMAGE}, {&vk_context.depth_buffer, IMAGE},*/ {&vk_context.swap_chain, SWAP_CHAIN, i} };
         render_pass->add_framebuffer(vk_context.swap_chain->extent.width, vk_context.swap_chain->extent.height, attachments);
     }
@@ -323,7 +327,7 @@ int main(int argc, char** argv)
         }
     });
 
-    std::for_each(g_buffer.begin(), g_buffer.end(), [] (image_t* img) { delete img; } );
+    // std::for_each(g_buffer.begin(), g_buffer.end(), [] (image_t* img) { delete img; } );
 
     glfwTerminate();
     return 0;

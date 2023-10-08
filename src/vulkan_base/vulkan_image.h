@@ -47,13 +47,13 @@ class image_t
         const VkCommandPool* command_pool = nullptr;
         const logical_device_t* device = nullptr;
         const VkAllocationCallbacks* allocator = nullptr;
-        image_settings_t settings{};
 
         std::int32_t create_image(std::uint32_t width, std::uint32_t height, VkImage& image, VkDeviceMemory& memory);
         void copy_buffer_to_image(VkBuffer buffer);
         std::int32_t generate_mipmaps();
 
     public:
+        image_settings_t settings{};
         std::uint32_t width;
         std::uint32_t height;
         VkImage image;

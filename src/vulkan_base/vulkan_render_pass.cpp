@@ -129,7 +129,7 @@ std::int32_t render_pass_t::add_framebuffer(std::uint32_t width, std::uint32_t h
         switch (attachment.type)
         {
             case IMAGE:
-                attachments_views[index] = (((image_t*) attachment.source)->view);
+                attachments_views[index] = ((*((image_t**) attachment.source))->view);
                 break;
             case SWAP_CHAIN:
                 attachments_views[index] = ((*((swap_chain_t**) attachment.source))->image_views[attachment.index]);
@@ -165,7 +165,7 @@ std::int32_t render_pass_t::recreate_framebuffer(std::uint32_t index, std::uint3
         switch (attachment.type)
         {
             case IMAGE:
-                attachments_views.push_back(((image_t*) attachment.source)->view);
+                attachments_views.push_back((*((image_t**) attachment.source))->view);
                 break;
             case SWAP_CHAIN:
                 attachments_views.push_back((*((swap_chain_t**) attachment.source))->image_views[attachment.index]);

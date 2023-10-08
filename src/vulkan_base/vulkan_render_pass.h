@@ -48,7 +48,7 @@ struct framebuffer_t
 
 struct render_pass_t
 {
-    bool resizeable = false;
+    bool resizeable = true;
     VkRenderPass render_pass;
     std::uint32_t subpass_count = 1;
     std::uint32_t current_subpass = 0;

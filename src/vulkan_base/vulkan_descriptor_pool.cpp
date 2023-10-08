@@ -5,6 +5,11 @@
 #include <iostream>
 #include <tuple>
 
+void descriptor_pool_t::reconfigure()
+{
+    this->configure_descriptors(this->config);
+}
+
 void descriptor_pool_t::configure_descriptors(std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> data)
 {
     for (std::uint32_t i = 0; i < this->sets.size(); ++i)
@@ -29,7 +34,7 @@ void descriptor_pool_t::configure_descriptors(std::vector<std::tuple<std::uint32
                 case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
                 case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
                     {
-                        image_t* img = (image_t*) std::get<2>(e) + std::get<4>(e) * i;
+                        image_t* img = *((image_t**) std::get<2>(e) + std::get<4>(e) * i);
                         VkDescriptorImageInfo image_info{};
                         image_info.sampler = img->sampler;
                         image_info.imageView = img->view;
@@ -60,6 +65,7 @@ void descriptor_pool_t::configure_descriptors(std::vector<std::tuple<std::uint32
 
         vkUpdateDescriptorSets(*this->device, static_cast<std::uint32_t>(descriptor_writes.size()), descriptor_writes.data(), 0, nullptr);
     }
+    this->config = data;
 }
 
 std::int32_t descriptor_pool_t::init(VkDescriptorSetLayout layout, std::vector<VkDescriptorType> types, const VkDevice* device)
