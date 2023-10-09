@@ -2,6 +2,7 @@
 #include "vulkan_base/vulkan_vertex.h"
 #include "model_base/model_base.h"
 #include "command_line_parser/command_line_parser.h"
+#include "user_base/camera.h"
 #include <chrono>
 #include <cstring>
 #include <iostream>
@@ -30,6 +31,39 @@ std::vector<vertex_t> vertices = {
     { {-1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f} }  // top left
 };
 std::vector<std::uint32_t> indices = { 0, 1, 2, 2, 3, 0 };
+
+camera_t cam(glm::vec3(0.0f, 0.0f, 6.0f));
+bool camera_active = false;
+bool first_mouse = true;
+float last_x = 0.0f, last_y = 0.0f;
+
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mode)
+{
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) 
+    {
+        std::cout << "cam active" << std::endl;
+        camera_active = true;
+    }
+    else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE) camera_active = false;
+}
+
+void cursor_pos_callback(GLFWwindow* window, double x_pos, double y_pos)
+{
+    if (first_mouse)
+    {
+        last_x = x_pos;
+        last_y = y_pos;
+        first_mouse = false;
+    }
+    if (camera_active) cam.turn(x_pos - last_x, last_y - y_pos);
+    last_x = x_pos;
+    last_y = y_pos;
+}
+
+void scroll_callback(GLFWwindow* window, double x_offset, double y_offset)
+{
+    if (camera_active) cam.zoom(y_offset);
+}
 
 int main(int argc, char** argv)
 {
@@ -100,6 +134,10 @@ int main(int argc, char** argv)
         return -1;
     }
 
+    glfwSetMouseButtonCallback(vk_context.window, mouse_button_callback);
+    glfwSetCursorPosCallback(vk_context.window, cursor_pos_callback);
+    glfwSetScrollCallback(vk_context.window, scroll_callback);
+
     model_t model(model_path);
     if (!model.is_initialized()) return -1;
     auto bufs = model.set_up_buffer(&vk_context);
@@ -165,7 +203,6 @@ int main(int argc, char** argv)
     VkDescriptorSetLayoutBinding phong_layout_binding = { 3, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
     std::vector<VkDescriptorSetLayoutBinding> out_bindings = { g_pos_binding, g_normal_binding, g_albedo_binding, phong_layout_binding };
 
-    
     std::vector<image_t*> g_buffer;
     image_settings_t g_buffer_settings;
     g_buffer_settings.sample_count = vk_context.msaa_samples;
@@ -184,7 +221,6 @@ int main(int argc, char** argv)
     // ALBEDO
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
-    g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     vk_context.color_buffers.push_back(g_buffer.back());
   
     image_settings_t g_depth_settings;
@@ -339,9 +375,21 @@ int main(int argc, char** argv)
 
     vk_context.main_loop([&]
     {
-        while (!glfwWindowShouldClose(vk_context.window))
+        float delta_time = 0.0f;
+        float last_frame = 0.0f;
+        bool running = true;
+        while (running)//!glfwWindowShouldClose(vk_context.window))
         {
             glfwPollEvents();
+            float current_frame = glfwGetTime();
+            delta_time = current_frame - last_frame;
+            last_frame = current_frame;
+
+            if (glfwGetKey(vk_context.window, GLFW_KEY_ESCAPE) == GLFW_PRESS) running = false;//glfwWindowShouldClose(vk_context.window);
+            if (glfwGetKey(vk_context.window, GLFW_KEY_W) == GLFW_PRESS) cam.move(FORWARD, delta_time);
+            if (glfwGetKey(vk_context.window, GLFW_KEY_A) == GLFW_PRESS) cam.move(LEFT, delta_time);
+            if (glfwGetKey(vk_context.window, GLFW_KEY_S) == GLFW_PRESS) cam.move(BACKWARD, delta_time);
+            if (glfwGetKey(vk_context.window, GLFW_KEY_D) == GLFW_PRESS) cam.move(RIGHT, delta_time);
 
             static std::chrono::time_point start_time = std::chrono::high_resolution_clock::now();
             std::chrono::time_point current_time = std::chrono::high_resolution_clock::now();
@@ -350,8 +398,8 @@ int main(int argc, char** argv)
             std::memcpy(blinn_phong_buffers[vk_context.get_current_frame()]->mapped_memory, &blinn_phong, sizeof(blinn_phong_t));
             static ubo_t ubo;
             ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-            ubo.view = glm::lookAt(glm::vec3(5.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-            ubo.projection = glm::perspective(glm::radians(45.0f), vk_context.get_swap_chain_extent().width / (float) vk_context.get_swap_chain_extent().height, 0.1f, 100.0f);
+            ubo.view =  cam.calculate_view_matrix();
+            ubo.projection = glm::perspective(glm::radians(cam.fov_angle), vk_context.get_swap_chain_extent().width / (float) vk_context.get_swap_chain_extent().height, 0.1f, 100.0f);
             ubo.projection[1][1] *= -1;
             std::memcpy(ubo_buffers[vk_context.get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
             
@@ -361,8 +409,6 @@ int main(int argc, char** argv)
             }
         }
     });
-
-    // std::for_each(g_buffer.begin(), g_buffer.end(), [] (image_t* img) { delete img; } );
 
     glfwTerminate();
     return 0;
