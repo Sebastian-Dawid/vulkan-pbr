@@ -35,12 +35,15 @@ int main(int argc, char** argv)
 {
 
     std::uint32_t width = 500, height = 500;
+    std::string model_path = "./models/backpack/backpack.obj", texture_path = "./models/backpack/albedo.jpg";
     if (argc != 1)
     {
         std::map<std::string, std::tuple<std::vector<value_type_t>, std::uint32_t>> allowed_args;
         allowed_args["--help"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::NONE }, 0);
         allowed_args["--width"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::UINT }, 1);
         allowed_args["--height"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::UINT }, 1);
+        allowed_args["--model"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::STRING }, 1);
+        allowed_args["--texture"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::STRING }, 1);
         auto opt_res = parse_command_line_arguments(argc - 1, argv + 1, allowed_args);
         bool show_usage = false;
 
@@ -48,27 +51,12 @@ int main(int argc, char** argv)
         {
             show_usage = true;
         }
-        else
-        {
-            auto res = opt_res.value();
-            if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--help") == 0; }) != res.end())
-            {
-                show_usage = true;
-            }
-        }
-        
-
-        if (show_usage)
-        {
-            std::cout << "usage: ./build/main [OPTIONS]" << std::endl;
-            std::cout << "\tOPTIONS:" << std::endl;
-            std::cout << "\t\t\"--help\":   show this message." << std::endl;
-            std::cout << "\t\t\"--width\":  specify the inital width of the window." << std::endl;
-            std::cout << "\t\t\"--height\": specify the inital height of the window." << std::endl;
-            return 0;
-        }
         
         auto res = opt_res.value();
+        if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--help") == 0; }) != res.end())
+        {
+            show_usage = true;
+        }
         if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--width") == 0; }) != res.end())
         {
             width = res["--width"][0].u;
@@ -76,6 +64,26 @@ int main(int argc, char** argv)
         if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--height") == 0; }) != res.end())
         {
             height = res["--height"][0].u;
+        }
+        if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--model") == 0; }) != res.end())
+        {
+            model_path = res["--model"][0].s;
+        }
+        if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--texture") == 0; }) != res.end())
+        {
+            texture_path = res["--texture"][0].s;
+        }
+
+        if (show_usage)
+        {
+            std::cout << "usage: ./build/main [OPTIONS]" << std::endl;
+            std::cout << "\tOPTIONS:" << std::endl;
+            std::cout << "\t\t\"--help\":    show this message." << std::endl;
+            std::cout << "\t\t\"--width\":   specify the inital width of the window." << std::endl;
+            std::cout << "\t\t\"--height\":  specify the inital height of the window." << std::endl;
+            std::cout << "\t\t\"--model\":   specify the path to the .obj file of the model." << std::endl;
+            std::cout << "\t\t\"--texture\": specify the path to the texture of the model." << std::endl;
+            return 0;
         }
     }
 
@@ -86,7 +94,7 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    model_t model("./models/backpack/backpack.obj");
+    model_t model(model_path);
     if (!model.is_initialized()) return -1;
     auto bufs = model.set_up_buffer(&vk_context);
     if (!bufs.has_value()) return -1;
@@ -124,7 +132,7 @@ int main(int argc, char** argv)
     g_descriptor_config.push_back(std::make_tuple(0, sizeof(ubo_t), &ubo_buffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
 
     image_settings_t image_settings;
-    if (vk_context.add_image("./models/backpack/albedo.jpg", image_settings, true) != 0) return -1;
+    if (vk_context.add_image(texture_path, image_settings, true) != 0) return -1;
     image_t* img = vk_context.get_image(0);
     g_descriptor_config.push_back(std::make_tuple(1, 0, &img, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
 
@@ -311,7 +319,7 @@ int main(int argc, char** argv)
             static std::chrono::time_point start_time = std::chrono::high_resolution_clock::now();
             std::chrono::time_point current_time = std::chrono::high_resolution_clock::now();
             float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-            static blinn_phong_t blinn_phong = { {4.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {10.0f, 0.0f, 0.0f}, 0.7f, 1.8f };
+            static blinn_phong_t blinn_phong = { {0.0f, 4.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {10.0f, 0.0f, 0.0f}, 0.7f, 1.8f };
             std::memcpy(blinn_phong_buffers[vk_context.get_current_frame()]->mapped_memory, &blinn_phong, sizeof(blinn_phong_t));
             static ubo_t ubo;
             ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
