@@ -34,7 +34,7 @@ std::vector<std::uint32_t> indices = { 0, 1, 2, 2, 3, 0 };
 int main(int argc, char** argv)
 {
 
-    std::uint32_t width = 500, height = 500;
+    std::uint32_t width = 1280, height = 720;
     std::string model_path = "./models/backpack/backpack.obj", texture_path = "./models/backpack/albedo.jpg";
     if (argc != 1)
     {
@@ -162,44 +162,68 @@ int main(int argc, char** argv)
     
     std::vector<image_t*> g_buffer;
     image_settings_t g_buffer_settings;
-    g_buffer_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
+    g_buffer_settings.sample_count = vk_context.msaa_samples;
     g_buffer_settings.format = vk_context.swap_chain->format.format;
-    g_buffer_settings.usage = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    g_buffer_settings.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     // POS
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
-    g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     vk_context.color_buffers.push_back(g_buffer.back());
 
     // NORMAL
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
-    g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     vk_context.color_buffers.push_back(g_buffer.back());
 
     // ALBEDO
+    g_buffer_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
+    g_buffer_settings.usage = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
     g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     vk_context.color_buffers.push_back(g_buffer.back());
-   
+  
     image_settings_t g_depth_settings;
     g_depth_settings.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    g_depth_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
+    g_depth_settings.sample_count = vk_context.msaa_samples;
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_depth_buffer(g_depth_settings, vk_context.get_swap_chain_extent(), vk_context.device);
     vk_context.depth_buffers.push_back(g_buffer.back());
 
-    image_t** g_pos = &vk_context.color_buffers[0];
+    // resolve buffers for the msaa
+    image_settings_t resolve_buffer_settings;
+    resolve_buffer_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
+    resolve_buffer_settings.format = vk_context.swap_chain->format.format;
+    resolve_buffer_settings.usage = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
+    g_buffer.back()->init_color_buffer(resolve_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
+    g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    vk_context.color_buffers.push_back(g_buffer.back());
+    
+    g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
+    g_buffer.back()->init_color_buffer(resolve_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
+    g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    vk_context.color_buffers.push_back(g_buffer.back());
+    
+    g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
+    g_buffer.back()->init_color_buffer(resolve_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
+    g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    vk_context.color_buffers.push_back(g_buffer.back());
+
+    image_t** g_pos = &vk_context.color_buffers[3];
     descriptor_config.push_back(std::make_tuple(0, 0, g_pos, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
-    image_t** g_normal = &vk_context.color_buffers[1];
+    image_t** g_normal = &vk_context.color_buffers[4];
     descriptor_config.push_back(std::make_tuple(1, 0, g_normal, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
     image_t** g_albedo = &vk_context.color_buffers[2];
     descriptor_config.push_back(std::make_tuple(2, 0, g_albedo, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
 
     render_pass_settings_t render_pass_settings;
-    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 3, 1, 0);
-    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 0, 0, 3);
+    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, vk_context.msaa_samples, &vk_context.physical_device, 3, 1, 3);
+    render_pass_settings.attachments[2].samples = VK_SAMPLE_COUNT_1_BIT;
+    render_pass_settings.subpasses[0].color_attachment_resolve_references[2].attachment = VK_ATTACHMENT_UNUSED;
+    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 0, 0, 3, 4);
+    render_pass_settings.subpasses[1].input_attachment_references[2].attachment = 2;
     render_pass_settings.attachments.back().finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
     {
@@ -229,7 +253,8 @@ int main(int argc, char** argv)
     for (std::uint32_t i = 0; i < vk_context.swap_chain->image_views.size(); ++i)
     {
         std::vector<framebuffer_attachment_t> attachments = { {&vk_context.color_buffers[0], IMAGE}, {&vk_context.color_buffers[1], IMAGE},
-            {&vk_context.color_buffers[2], IMAGE}, {&vk_context.depth_buffers[0], IMAGE},
+            {&vk_context.color_buffers[2], IMAGE}, {&vk_context.depth_buffers[0], IMAGE},{&vk_context.color_buffers[3], IMAGE},
+            {&vk_context.color_buffers[4], IMAGE}, {&vk_context.color_buffers[5], IMAGE},
             /*{&vk_context.color_buffer, IMAGE}, {&vk_context.depth_buffer, IMAGE},*/ {&vk_context.swap_chain, SWAP_CHAIN, i} };
         render_pass->add_framebuffer(vk_context.swap_chain->extent.width, vk_context.swap_chain->extent.height, attachments);
     }
@@ -239,7 +264,7 @@ int main(int argc, char** argv)
     pipeline_shaders_t g_shaders = { "./build/target/shaders/g_buffer.vert.spv", std::nullopt, "./build/target/shaders/g_buffer.frag.spv" };
     pipeline_settings_t g_pipeline_settings;
     g_pipeline_settings.populate_defaults(vk_context.get_descriptor_set_layouts(), vk_context.render_passes[0], 3);
-    //g_pipeline_settings.multisampling.rasterizationSamples = vk_context.msaa_samples;
+    g_pipeline_settings.multisampling.rasterizationSamples = vk_context.msaa_samples;
     if (vk_context.add_pipeline(g_shaders, g_pipeline_settings) != 0) return -1;
     
     vk_context.add_descriptor_set_layout(out_bindings);

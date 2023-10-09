@@ -352,7 +352,10 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
     {
         this->color_buffers[idx] = new image_t(&this->physical_device, &this->command_pool);
         this->color_buffers[idx]->init_color_buffer(settings, this->get_swap_chain_extent(), this->device);
-        this->color_buffers[idx]->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        if (this->color_buffers[idx]->settings.usage & (VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT))
+        {
+            this->color_buffers[idx]->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
         ++idx;
     }
     idx = 0;

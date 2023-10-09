@@ -5,7 +5,7 @@
 
 void render_pass_settings_t::add_subpass(VkFormat format, VkSampleCountFlagBits msaa_samples, const VkPhysicalDevice* physical_device,
         std::uint32_t color_attachment_count, std::uint32_t depth_attachment_count, std::uint32_t color_resolve_attachment_count,
-        std::uint32_t input_attachment_count)
+        std::uint32_t input_attachment_count, std::uint32_t first_input_attachment)
 {
     this->subpasses.push_back(subpass_t());
     subpass_t& subpass = this->subpasses.back();
@@ -51,7 +51,7 @@ void render_pass_settings_t::add_subpass(VkFormat format, VkSampleCountFlagBits 
         this->attachments.push_back(depth_attachment);
     }
     
-    if (color_resolve_attachment_count > 0)
+    for (std::uint32_t i = 0; i < color_resolve_attachment_count; ++i)
     {
         VkAttachmentDescription color_attachment_resolve{};
         color_attachment_resolve.format = format;
@@ -61,7 +61,7 @@ void render_pass_settings_t::add_subpass(VkFormat format, VkSampleCountFlagBits 
         color_attachment_resolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         color_attachment_resolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         color_attachment_resolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        color_attachment_resolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        color_attachment_resolve.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentReference color_attachment_resolve_reference{};
         color_attachment_resolve_reference.attachment = static_cast<std::uint32_t>(this->attachments.size());
@@ -75,7 +75,7 @@ void render_pass_settings_t::add_subpass(VkFormat format, VkSampleCountFlagBits 
     for (std::uint32_t i = 0; i < input_attachment_count; ++i)
     {
         VkAttachmentReference input_attachment_reference{};
-        input_attachment_reference.attachment = i;
+        input_attachment_reference.attachment = first_input_attachment + i;
         input_attachment_reference.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         subpass.input_attachment_references.push_back(input_attachment_reference);
         subpass.description.pInputAttachments = subpass.input_attachment_references.data();

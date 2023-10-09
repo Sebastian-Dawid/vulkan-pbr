@@ -20,9 +20,10 @@ struct render_pass_settings_t
     std::vector<subpass_t> subpasses;
     std::vector<VkSubpassDependency> dependencies;
 
+    /// If the input attachments are not sequential you need to specify them manually before submitting the settings struct.
     void add_subpass(VkFormat format, VkSampleCountFlagBits msaa_samples, const VkPhysicalDevice* physical_device,
             std::uint32_t color_attachment_count = 1, std::uint32_t depth_attachment_count = 0, std::uint32_t color_attachment_resolve_count = 0,
-            std::uint32_t input_attachmnet_count = 0);
+            std::uint32_t input_attachmnet_count = 0, std::uint32_t first_input_attachment = 0);
 };
 
 enum attachment_type_t
