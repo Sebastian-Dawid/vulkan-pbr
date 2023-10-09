@@ -52,7 +52,7 @@ struct render_pass_t
     VkRenderPass render_pass;
     std::uint32_t subpass_count = 1;
     std::uint32_t current_subpass = 0;
-    std::vector<std::vector<framebuffer_t>> framebuffers;
+    std::vector<framebuffer_t> framebuffers;
     const VkDevice* device;
 
     std::int32_t init(const render_pass_settings_t& settings, const VkDevice& device);

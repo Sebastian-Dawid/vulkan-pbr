@@ -113,7 +113,6 @@ std::int32_t render_pass_t::init(const render_pass_settings_t& settings, const V
     }
 
     this->subpass_count = static_cast<std::uint32_t>(settings.subpasses.size());
-    this->framebuffers.resize(this->subpass_count);
     this->device = &device;
 
     return 0;
@@ -150,17 +149,17 @@ std::int32_t render_pass_t::add_framebuffer(std::uint32_t width, std::uint32_t h
         std::cerr << "Failed to create framebuffer!" << std::endl;
         return -1;
     }
-    this->framebuffers[this->current_subpass].push_back({width, height, fb, attachments});
+    this->framebuffers.push_back({width, height, fb, attachments});
 
     return 0;
 }
 
 std::int32_t render_pass_t::recreate_framebuffer(std::uint32_t index, std::uint32_t width, std::uint32_t height)
 {
-    vkDestroyFramebuffer(*this->device, this->framebuffers[this->current_subpass][index].framebuffer, nullptr);
+    vkDestroyFramebuffer(*this->device, this->framebuffers[index].framebuffer, nullptr);
     
     std::vector<VkImageView> attachments_views;
-    for (framebuffer_attachment_t attachment : this->framebuffers[this->current_subpass][index].attachments)
+    for (framebuffer_attachment_t attachment : this->framebuffers[index].attachments)
     {
         switch (attachment.type)
         {
@@ -178,10 +177,10 @@ std::int32_t render_pass_t::recreate_framebuffer(std::uint32_t index, std::uint3
     create_info.renderPass = render_pass;
     create_info.attachmentCount = static_cast<std::uint32_t>(attachments_views.size());
     create_info.pAttachments = attachments_views.data();
-    create_info.width = (this->resizeable) ? width : this->framebuffers[this->current_subpass][index].width;
-    create_info.height = (this->resizeable) ? height : this->framebuffers[this->current_subpass][index].height;
+    create_info.width = (this->resizeable) ? width : this->framebuffers[index].width;
+    create_info.height = (this->resizeable) ? height : this->framebuffers[index].height;
     create_info.layers = 1;
-    if (vkCreateFramebuffer(*this->device, &create_info, nullptr, &this->framebuffers[this->current_subpass][index].framebuffer) != VK_SUCCESS)
+    if (vkCreateFramebuffer(*this->device, &create_info, nullptr, &this->framebuffers[index].framebuffer) != VK_SUCCESS)
     {
         std::cerr << "Failed to create framebuffer!" << std::endl;
         return -1;
@@ -193,10 +192,7 @@ std::int32_t render_pass_t::recreate_framebuffer(std::uint32_t index, std::uint3
 render_pass_t::~render_pass_t()
 {
     if (this->device == nullptr) return;
-    for (std::vector<framebuffer_t> fbs : this->framebuffers)
-    {
-        std::for_each(fbs.begin(), fbs.end(), [&](framebuffer_t& fb){ vkDestroyFramebuffer(*this->device, fb.framebuffer, nullptr); });
-    }
+    std::for_each(this->framebuffers.begin(), this->framebuffers.end(), [&](framebuffer_t& fb){ vkDestroyFramebuffer(*this->device, fb.framebuffer, nullptr); });
     std::cout << "Destroying Framebuffer(s)!" << std::endl;
     vkDestroyRenderPass(*this->device, this->render_pass, nullptr);
     std::cout << "Destroying Render Pass!" << std::endl;

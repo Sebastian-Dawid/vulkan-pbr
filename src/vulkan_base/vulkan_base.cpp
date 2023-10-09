@@ -365,14 +365,11 @@ std::int32_t vulkan_context_t::recreate_swap_chain()
 
     for (render_pass_t* render_pass : this->render_passes)
     {
-        for (std::vector<framebuffer_t> fb : render_pass->framebuffers)
+        std::uint32_t idx = 0;
+        for (framebuffer_t fb : render_pass->framebuffers)
         {
-            std::uint32_t idx = 0;
-            for (framebuffer_t f :  fb)
-            {
-                render_pass->recreate_framebuffer(idx, this->swap_chain->extent.width, this->swap_chain->extent.height);
-                ++idx; 
-            }
+            render_pass->recreate_framebuffer(idx, this->swap_chain->extent.width, this->swap_chain->extent.height);
+            ++idx; 
         }
     }
 
@@ -477,7 +474,7 @@ std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vu
     std::vector<VkCommandBuffer> command_buffers;
     
     recording_settings_t settings{};
-    settings.populate_defaults(this->render_passes[0]->render_pass, this->render_passes[0]->framebuffers[0][image_index].framebuffer,
+    settings.populate_defaults(this->render_passes[0]->render_pass, this->render_passes[0]->framebuffers[image_index].framebuffer,
             this->swap_chain->extent, G_CLEAR_COLORS);
     settings.draw_command = [&] (VkCommandBuffer command_buffer) { func(command_buffer, this); };
 
