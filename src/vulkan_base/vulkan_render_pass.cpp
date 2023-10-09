@@ -51,25 +51,36 @@ void render_pass_settings_t::add_subpass(VkFormat format, VkSampleCountFlagBits 
         this->attachments.push_back(depth_attachment);
     }
     
-    for (std::uint32_t i = 0; i < color_resolve_attachment_count; ++i)
+    if (color_resolve_attachment_count > 0)
     {
-        VkAttachmentDescription color_attachment_resolve{};
-        color_attachment_resolve.format = format;
-        color_attachment_resolve.samples = VK_SAMPLE_COUNT_1_BIT;
-        color_attachment_resolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        color_attachment_resolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        color_attachment_resolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        color_attachment_resolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        color_attachment_resolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        color_attachment_resolve.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        std::uint32_t count = (color_resolve_attachment_count < color_attachment_count) ? color_attachment_count : color_resolve_attachment_count;
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            VkAttachmentDescription color_attachment_resolve{};
+            color_attachment_resolve.format = format;
+            color_attachment_resolve.samples = VK_SAMPLE_COUNT_1_BIT;
+            color_attachment_resolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            color_attachment_resolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            color_attachment_resolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            color_attachment_resolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            color_attachment_resolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            color_attachment_resolve.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        VkAttachmentReference color_attachment_resolve_reference{};
-        color_attachment_resolve_reference.attachment = static_cast<std::uint32_t>(this->attachments.size());
-        color_attachment_resolve_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        
-        subpass.color_attachment_resolve_references.push_back(color_attachment_resolve_reference);
-        subpass.description.pResolveAttachments = subpass.color_attachment_resolve_references.data();
-        this->attachments.push_back(color_attachment_resolve);
+            VkAttachmentReference color_attachment_resolve_reference{};
+            if (i >= color_resolve_attachment_count)
+            {
+                color_attachment_resolve_reference.attachment = VK_ATTACHMENT_UNUSED;
+            }
+            else
+            {
+                color_attachment_resolve_reference.attachment = static_cast<std::uint32_t>(this->attachments.size());
+                color_attachment_resolve_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                this->attachments.push_back(color_attachment_resolve);
+            }
+
+            subpass.color_attachment_resolve_references.push_back(color_attachment_resolve_reference);
+            subpass.description.pResolveAttachments = subpass.color_attachment_resolve_references.data();
+        }
     }
 
     for (std::uint32_t i = 0; i < input_attachment_count; ++i)

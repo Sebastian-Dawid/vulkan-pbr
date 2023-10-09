@@ -12,7 +12,7 @@ enum value_type_t
     UINT,
     INT,
     FLOAT,
-    STRING
+    STRING,
 };
 
 struct argument_value_t

@@ -35,6 +35,7 @@ int main(int argc, char** argv)
 {
 
     std::uint32_t width = 1280, height = 720;
+    bool flip_texture = true;
     std::string model_path = "./models/backpack/backpack.obj", texture_path = "./models/backpack/albedo.jpg";
     if (argc != 1)
     {
@@ -44,6 +45,7 @@ int main(int argc, char** argv)
         allowed_args["--height"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::UINT }, 1);
         allowed_args["--model"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::STRING }, 1);
         allowed_args["--texture"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::STRING }, 1);
+        allowed_args["--flip-texture"] = std::make_tuple(std::vector<value_type_t>{ value_type_t::NONE }, 0);
         auto opt_res = parse_command_line_arguments(argc - 1, argv + 1, allowed_args);
         bool show_usage = false;
 
@@ -72,6 +74,10 @@ int main(int argc, char** argv)
         if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--texture") == 0; }) != res.end())
         {
             texture_path = res["--texture"][0].s;
+        }
+        if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--flip-texture") == 0; }) != res.end())
+        {
+            flip_texture = false;
         }
 
         if (show_usage)
@@ -132,7 +138,7 @@ int main(int argc, char** argv)
     g_descriptor_config.push_back(std::make_tuple(0, sizeof(ubo_t), &ubo_buffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
 
     image_settings_t image_settings;
-    if (vk_context.add_image(texture_path, image_settings, true) != 0) return -1;
+    if (vk_context.add_image(texture_path, image_settings, flip_texture) != 0) return -1;
     image_t* img = vk_context.get_image(0);
     g_descriptor_config.push_back(std::make_tuple(1, 0, &img, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
 
@@ -176,8 +182,6 @@ int main(int argc, char** argv)
     vk_context.color_buffers.push_back(g_buffer.back());
 
     // ALBEDO
-    g_buffer_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
-    g_buffer_settings.usage = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_color_buffer(g_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
     g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -215,15 +219,12 @@ int main(int argc, char** argv)
     descriptor_config.push_back(std::make_tuple(0, 0, g_pos, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
     image_t** g_normal = &vk_context.color_buffers[4];
     descriptor_config.push_back(std::make_tuple(1, 0, g_normal, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
-    image_t** g_albedo = &vk_context.color_buffers[2];
+    image_t** g_albedo = &vk_context.color_buffers[5];
     descriptor_config.push_back(std::make_tuple(2, 0, g_albedo, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
 
     render_pass_settings_t render_pass_settings;
     render_pass_settings.add_subpass(vk_context.swap_chain->format.format, vk_context.msaa_samples, &vk_context.physical_device, 3, 1, 3);
-    render_pass_settings.attachments[2].samples = VK_SAMPLE_COUNT_1_BIT;
-    render_pass_settings.subpasses[0].color_attachment_resolve_references[2].attachment = VK_ATTACHMENT_UNUSED;
     render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 0, 0, 3, 4);
-    render_pass_settings.subpasses[1].input_attachment_references[2].attachment = 2;
     render_pass_settings.attachments.back().finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
     {
@@ -248,6 +249,7 @@ int main(int argc, char** argv)
 
     render_pass_settings.dependencies.push_back(dep);
 
+    std::cout << VK_ATTACHMENT_UNUSED << std::endl;
     render_pass_t* render_pass = new render_pass_t();
     render_pass->init(render_pass_settings, vk_context.device->device);
     for (std::uint32_t i = 0; i < vk_context.swap_chain->image_views.size(); ++i)
@@ -348,7 +350,7 @@ int main(int argc, char** argv)
             std::memcpy(blinn_phong_buffers[vk_context.get_current_frame()]->mapped_memory, &blinn_phong, sizeof(blinn_phong_t));
             static ubo_t ubo;
             ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-            ubo.view = glm::lookAt(glm::vec3(10.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            ubo.view = glm::lookAt(glm::vec3(5.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
             ubo.projection = glm::perspective(glm::radians(45.0f), vk_context.get_swap_chain_extent().width / (float) vk_context.get_swap_chain_extent().height, 0.1f, 100.0f);
             ubo.projection[1][1] *= -1;
             std::memcpy(ubo_buffers[vk_context.get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
