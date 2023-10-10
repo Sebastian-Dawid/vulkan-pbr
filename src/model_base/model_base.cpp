@@ -42,6 +42,8 @@ model_t::model_t(const std::string& path)
 
     for (const tinyobj::shape_t& shape : shapes)
     {
+        std::uint32_t count = 0;
+        std::array<vertex_t, 3> tri;
         for (const tinyobj::index_t& index : shape.mesh.indices)
         {
             vertex_t vertex{};
@@ -63,20 +65,42 @@ model_t::model_t(const std::string& path)
                 attrib.normals[3 * index.normal_index + 2],
             };
 
-            // find some clever way to calc tangent space.
-            vertex.tanget = {
-                attrib.normals[3 * index.normal_index + 0],
-                attrib.normals[3 * index.normal_index + 1],
-                attrib.normals[3 * index.normal_index + 2],
-            };
-
-            if (unique_vertices.count(vertex) == 0)
+            tri[count] = vertex;
+            count = (count == 2) ? 0 : count + 1;
+            
+            if (count == 0)
             {
-                unique_vertices[vertex] = static_cast<std::uint32_t>(vertices.size());
-                this->vertices.push_back(vertex);
-            }
+                vertex_t& a = tri[0];
+                vertex_t& b = tri[1];
+                vertex_t& c = tri[2];
 
-            this->indices.push_back(unique_vertices[vertex]);
+                glm::vec3 ab = b.pos - a.pos;
+                glm::vec3 ac = c.pos - a.pos;
+                glm::vec2 delta_uv_1 = b.tex_coord - a.tex_coord;
+                glm::vec2 delta_uv_2 = c.tex_coord - a.tex_coord;
+
+                float f = 1.0f / (delta_uv_1.x * delta_uv_2.y - delta_uv_2.x * delta_uv_1.y);
+
+                glm::vec3 tangent(
+                        f * (delta_uv_2.y * ab.x - delta_uv_1.y * ac.x),
+                        f * (delta_uv_2.y * ab.y - delta_uv_1.y * ac.y),
+                        f * (delta_uv_2.y * ab.z - delta_uv_1.y * ac.z)
+                        );
+                a.tangent = tangent;
+                b.tangent = tangent;
+                c.tangent = tangent;
+
+                for (vertex_t vert : tri)
+                {
+                    if (unique_vertices.count(vert) == 0)
+                    {
+                        unique_vertices[vert] = static_cast<std::uint32_t>(vertices.size());
+                        this->vertices.push_back(vert);
+                    }
+
+                    this->indices.push_back(unique_vertices[vert]);
+                }
+            }
         }
     }
 

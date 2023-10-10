@@ -45,8 +45,9 @@ namespace std
 {
     size_t hash<vertex_t>::operator()(vertex_t const& vertex) const
     {
-        return ((hash<glm::vec3>()(vertex.pos) ^
-                (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^
-                (hash<glm::vec2>()(vertex.tex_coord) << 1);
+        return (((((hash<glm::vec3>()(vertex.pos) ^
+                  (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^
+                  (hash<glm::vec2>()(vertex.tex_coord) << 1)) >> 1) ^
+                  (hash<glm::vec3>()(vertex.tangent) << 1));
     }
 };
