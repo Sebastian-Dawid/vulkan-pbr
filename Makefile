@@ -40,10 +40,6 @@ LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 $(BUILD_DIR)/$(TARGET_EXEC): $(OBJS) $(SHADER_OBJS)
 	$(CXX) $(CXXFLAGS) $(CFLAGS) $(OBJS) -o $(BUILD_DIR)/$(TARGET_EXEC) $(LDFLAGS)
 
-#$(MAIN_BUILD)/%.c.o: %.c
-#	mkdir -p $(dir $@)
-#	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
-
 $(MAIN_BUILD)/%.spv: $(SRC_DIRS)/%
 	mkdir -p $(dir $@)
 	glslc $< -o $@
@@ -64,13 +60,13 @@ clean:
 test: clean build_debug
 	$(BUILD_DIR)/$(TARGET_EXEC)
 
-build_debug: CFLAGS += -g
+build_debug: CFLAGS += -g $(NVIDIA)
 build_debug: $(OBJS) $(SHADER_OBJS) $(BUILD_DIR)/$(TARGET_EXEC)
 
 release: clean build_release
 	$(BUILD_DIR)/$(TARGET_EXEC)
 
-build_release: CFLAGS += -DNDEBUG -O3
+build_release: CFLAGS += -DNDEBUG -O3 $(NVIDIA)
 build_release: clean $(BUILD_DIR)/$(TARGET_EXEC)
 
 -include $(DEPS)

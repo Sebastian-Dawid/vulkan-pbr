@@ -13,12 +13,13 @@ struct vertex_t
 {
     glm::vec3 pos;
     glm::vec3 normal;
+    glm::vec3 tangent;
     glm::vec2 tex_coord;
 
     bool operator==(const vertex_t& other) const;
 
     static VkVertexInputBindingDescription get_binding_description();
-    static std::array<VkVertexInputAttributeDescription, 3> get_attribute_description();
+    static std::array<VkVertexInputAttributeDescription, 4> get_attribute_description();
 };
 
 namespace std

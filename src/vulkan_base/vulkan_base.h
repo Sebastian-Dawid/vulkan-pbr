@@ -22,8 +22,6 @@ class vulkan_context_t
         VkSurfaceKHR surface;
         command_buffers_t* command_buffers = nullptr;
         std::uint32_t current_frame = 0;
-        std::vector<buffer_t*> buffers;
-        std::vector<image_t*> images;
         std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
         std::vector<descriptor_pool_t*> descriptor_pools;
 
@@ -61,6 +59,8 @@ class vulkan_context_t
         graphics_pipeline_t* current_pipeline = nullptr;
         std::vector<image_t*> color_buffers;
         std::vector<image_t*> depth_buffers;
+        std::vector<buffer_t*> buffers;
+        std::vector<image_t*> images;
 
         std::int32_t add_descriptor_set_layout(const std::vector<VkDescriptorSetLayoutBinding> layout_bindings = { UBO_LAYOUT_BINDING, SAMPLER_LAYOUT_BINDING });
         std::int32_t add_pipeline(const pipeline_shaders_t& shaders, const pipeline_settings_t& settings);

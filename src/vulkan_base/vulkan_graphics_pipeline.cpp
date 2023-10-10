@@ -7,7 +7,7 @@
 void pipeline_settings_t::populate_defaults(const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, render_pass_t* render_pass, std::uint32_t color_attachment_count)
 {
     this->vertex_binding_descriptions.push_back(vertex_t::get_binding_description());
-    std::array<VkVertexInputAttributeDescription, 3> attribute_description = vertex_t::get_attribute_description();
+    std::array<VkVertexInputAttributeDescription, 4> attribute_description = vertex_t::get_attribute_description();
     this->vertex_attribute_descriptions.insert(this->vertex_attribute_descriptions.begin(), attribute_description.begin(), attribute_description.end());
 
     this->vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;

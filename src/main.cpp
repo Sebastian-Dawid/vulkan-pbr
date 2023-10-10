@@ -14,6 +14,11 @@ struct ubo_t
     alignas(16) glm::mat4 projection;
 };
 
+struct flags_t
+{
+    bool normal_map;
+};
+
 struct blinn_phong_t
 {
     glm::vec3 light_pos;
@@ -25,10 +30,10 @@ struct blinn_phong_t
 };
 
 std::vector<vertex_t> vertices = {
-    { { 1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f} }, // top right
-    { { 1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f} }, // bottom right
-    { {-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f} }, // bottom left
-    { {-1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f} }  // top left
+    { { 1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {}, {1.0f, 1.0f} }, // top right
+    { { 1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {}, {1.0f, 0.0f} }, // bottom right
+    { {-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {}, {0.0f, 0.0f} }, // bottom left
+    { {-1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {}, {0.0f, 1.0f} }  // top left
 };
 std::vector<std::uint32_t> indices = { 0, 1, 2, 2, 3, 0 };
 
@@ -70,7 +75,9 @@ int main(int argc, char** argv)
 
     std::uint32_t width = 1280, height = 720;
     bool flip_texture = true;
-    std::string model_path = "./models/backpack/backpack.obj", texture_path = "./models/backpack/albedo.jpg";
+    std::string model_path = "./models/backpack/backpack.obj", albedo_path = "./models/backpack/albedo.jpg", specular_path = "./models/backpack/specular.jpg",
+        normal_path = "./models/backpack/normal.png", metallic_path = "./models/backpack/metallic.jpg", roughness_path = "./models/backpack/roughness.jpg",
+        ao_path = "./models/backpack/ao.jpg";
     if (argc != 1)
     {
         std::map<std::string, std::tuple<std::vector<value_type_t>, std::uint32_t>> allowed_args;
@@ -107,7 +114,7 @@ int main(int argc, char** argv)
         }
         if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--texture") == 0; }) != res.end())
         {
-            texture_path = res["--texture"][0].s;
+            albedo_path = res["--texture"][0].s;
         }
         if (std::find_if(res.begin(), res.end(), [](auto e){ return std::strcmp(e.first.c_str(), "--flip-texture") == 0; }) != res.end())
         {
@@ -172,13 +179,36 @@ int main(int argc, char** argv)
         buffer_t* ubo_buffer = vk_context.get_last_buffer();
         ubo_buffer->map_memory();
         ubo_buffers.push_back(ubo_buffer);
+        
+    }
+    for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        buffer_settings_t ubo_settings;
+        ubo_settings.size = sizeof(flags_t);
+        ubo_settings.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        ubo_settings.memory_properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        if (vk_context.add_buffer(ubo_settings) != 0) return -1;
+        buffer_t* ubo_buffer = vk_context.get_last_buffer();
+        ubo_buffer->map_memory();
+        ubo_buffers.push_back(ubo_buffer);
     }
     g_descriptor_config.push_back(std::make_tuple(0, sizeof(ubo_t), &ubo_buffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
+    g_descriptor_config.push_back(std::make_tuple(7, sizeof(flags_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
 
     image_settings_t image_settings;
-    if (vk_context.add_image(texture_path, image_settings, flip_texture) != 0) return -1;
-    image_t* img = vk_context.get_image(0);
-    g_descriptor_config.push_back(std::make_tuple(1, 0, &img, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
+    if (vk_context.add_image(albedo_path, image_settings, flip_texture) != 0) return -1;
+    if (vk_context.add_image(specular_path, image_settings, flip_texture) != 0) return -1;
+    if (vk_context.add_image(normal_path, image_settings, flip_texture) != 0) return -1;
+    if (vk_context.add_image(metallic_path, image_settings, flip_texture) != 0) return -1;
+    if (vk_context.add_image(roughness_path, image_settings, flip_texture) != 0) return -1;
+    if (vk_context.add_image(ao_path, image_settings, flip_texture) != 0) return -1;
+    
+    g_descriptor_config.push_back(std::make_tuple(1, 0, &vk_context.images[0], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
+    g_descriptor_config.push_back(std::make_tuple(2, 0, &vk_context.images[1], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
+    g_descriptor_config.push_back(std::make_tuple(3, 0, &vk_context.images[2], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
+    g_descriptor_config.push_back(std::make_tuple(4, 0, &vk_context.images[3], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
+    g_descriptor_config.push_back(std::make_tuple(5, 0, &vk_context.images[4], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
+    g_descriptor_config.push_back(std::make_tuple(6, 0, &vk_context.images[5], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
 
     std::vector<buffer_t*> blinn_phong_buffers;
     for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
@@ -195,7 +225,21 @@ int main(int argc, char** argv)
     }
     descriptor_config.push_back(std::make_tuple(3, sizeof(blinn_phong_t), &blinn_phong_buffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
 
-    std::vector<VkDescriptorSetLayoutBinding> g_bindings = { UBO_LAYOUT_BINDING, SAMPLER_LAYOUT_BINDING };
+    VkDescriptorSetLayoutBinding spec_binding = SAMPLER_LAYOUT_BINDING;
+    spec_binding.binding = 2;
+    VkDescriptorSetLayoutBinding normal_binding = SAMPLER_LAYOUT_BINDING;
+    normal_binding.binding = 3;
+    VkDescriptorSetLayoutBinding metallic_binding = SAMPLER_LAYOUT_BINDING;
+    metallic_binding.binding = 4;
+    VkDescriptorSetLayoutBinding roughness_binding = SAMPLER_LAYOUT_BINDING;
+    roughness_binding.binding = 5;
+    VkDescriptorSetLayoutBinding ao_binding = SAMPLER_LAYOUT_BINDING;
+    ao_binding.binding = 6;
+    VkDescriptorSetLayoutBinding flags_binding = UBO_LAYOUT_BINDING;
+    flags_binding.binding = 7;
+    flags_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    std::vector<VkDescriptorSetLayoutBinding> g_bindings = { UBO_LAYOUT_BINDING, SAMPLER_LAYOUT_BINDING, spec_binding, normal_binding, metallic_binding,
+        roughness_binding, ao_binding, flags_binding};
 
     VkDescriptorSetLayoutBinding g_pos_binding = { 0, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
     VkDescriptorSetLayoutBinding g_normal_binding = { 1, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
@@ -285,7 +329,6 @@ int main(int argc, char** argv)
 
     render_pass_settings.dependencies.push_back(dep);
 
-    std::cout << VK_ATTACHMENT_UNUSED << std::endl;
     render_pass_t* render_pass = new render_pass_t();
     render_pass->init(render_pass_settings, vk_context.device->device);
     for (std::uint32_t i = 0; i < vk_context.swap_chain->image_views.size(); ++i)
@@ -378,7 +421,7 @@ int main(int argc, char** argv)
         float delta_time = 0.0f;
         float last_frame = 0.0f;
         bool running = true;
-        while (running)//!glfwWindowShouldClose(vk_context.window))
+        while (running && !glfwWindowShouldClose(vk_context.window))
         {
             glfwPollEvents();
             float current_frame = glfwGetTime();
@@ -402,6 +445,8 @@ int main(int argc, char** argv)
             ubo.projection = glm::perspective(glm::radians(cam.fov_angle), vk_context.get_swap_chain_extent().width / (float) vk_context.get_swap_chain_extent().height, 0.1f, 100.0f);
             ubo.projection[1][1] *= -1;
             std::memcpy(ubo_buffers[vk_context.get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
+            static flags_t flags = { true };
+            std::memcpy(ubo_buffers[MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &flags, sizeof(flags_t));
             
             if (vk_context.draw_frame(draw_command) != 0)
             {

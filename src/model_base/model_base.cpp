@@ -63,6 +63,13 @@ model_t::model_t(const std::string& path)
                 attrib.normals[3 * index.normal_index + 2],
             };
 
+            // find some clever way to calc tangent space.
+            vertex.tanget = {
+                attrib.normals[3 * index.normal_index + 0],
+                attrib.normals[3 * index.normal_index + 1],
+                attrib.normals[3 * index.normal_index + 2],
+            };
+
             if (unique_vertices.count(vertex) == 0)
             {
                 unique_vertices[vertex] = static_cast<std::uint32_t>(vertices.size());
