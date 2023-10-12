@@ -3,6 +3,7 @@
 layout (location = 0) out vec3 g_position;
 layout (location = 1) out vec3 g_normal;
 layout (location = 2) out vec4 g_albedo;
+layout (location = 3) out vec3 g_pbr;
 
 layout (location = 0) in vec3 frag_pos;
 layout (location = 1) in vec3 frag_normal;
@@ -34,4 +35,5 @@ void main()
     {
         g_normal = normalize(frag_normal);
     }
+    g_pbr = vec3(texture(texture_metallic, frag_tex_coord).r, texture(texture_roughness, frag_tex_coord).r, texture(texture_ao, frag_tex_coord).r);
 }

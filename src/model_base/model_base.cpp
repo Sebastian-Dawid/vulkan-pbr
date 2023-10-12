@@ -1,6 +1,9 @@
 #include "model_base.h"
 #include <iostream>
 #include <tiny_obj_loader.h>
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 std::optional<std::tuple<buffer_t*, buffer_t*>> model_t::set_up_buffer(vulkan_context_t* context)
 {
@@ -25,7 +28,7 @@ bool model_t::is_initialized()
     return this->initialized;
 }
 
-model_t::model_t(const std::string& path)
+std::int32_t model_t::tiny_obj_init(const std::string& path)
 {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
@@ -35,10 +38,11 @@ model_t::model_t(const std::string& path)
     if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, path.c_str()))
     {
         std::cerr << warn + err << std::endl;
-        return;
+        return -1;
     }
 
     std::unordered_map<vertex_t, std::uint32_t> unique_vertices{};
+    std::unordered_map<vertex_t, glm::vec3> tangents{};
 
     for (const tinyobj::shape_t& shape : shapes)
     {
@@ -98,11 +102,98 @@ model_t::model_t(const std::string& path)
                         this->vertices.push_back(vert);
                     }
 
+                    tangents[vert] += tangent;
                     this->indices.push_back(unique_vertices[vert]);
                 }
             }
         }
     }
 
+    for (vertex_t& vert : this->vertices)
+    {
+        vert.tangent = glm::normalize(tangents[vert]);
+    }
+
     this->initialized = true;
+    return 0;
+}
+
+void process_node(model_t* model, aiNode* node, const aiScene* scene)
+{
+    for (std::uint32_t i = 0; i < node->mNumMeshes; ++i)
+    {
+        aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+
+        for (std::uint32_t j = 0; j < mesh->mNumVertices; ++j)
+        {
+            vertex_t vertex;
+            glm::vec3 vec3;
+            glm::vec2 vec2;
+            vec3.x = mesh->mVertices[j].x;
+            vec3.y = mesh->mVertices[j].y;
+            vec3.z = mesh->mVertices[j].z;
+            vertex.pos = vec3;
+
+            vec3.x = mesh->mNormals[j].x;
+            vec3.y = mesh->mNormals[j].y;
+            vec3.z = mesh->mNormals[j].z;
+            vertex.normal = vec3;
+
+            if (mesh->mTextureCoords[0])
+            {
+                vec2.x = mesh->mTextureCoords[0][j].x;
+                vec2.y = mesh->mTextureCoords[0][j].y;
+                vertex.tex_coord = vec2;
+            
+                vec3.x = mesh->mTangents[j].x;
+                vec3.y = mesh->mTangents[j].y;
+                vec3.z = mesh->mTangents[j].z;
+                vertex.tangent = vec3;
+            }
+
+            model->vertices.push_back(vertex);
+        }
+
+        std::uint32_t offset = model->vertices.size();
+        for (std::uint32_t j = 0; j < mesh->mNumFaces; ++j)
+        {
+            aiFace face = mesh->mFaces[j];
+            for (std::uint32_t k = 0; k < face.mNumIndices; ++k)
+            {
+                model->indices.push_back(offset + face.mIndices[k]);
+            }
+        }
+    }
+
+    for (std::uint32_t i = 0; i < node->mNumChildren; ++i)
+    {
+        process_node(model, node->mChildren[i], scene);
+    }
+}
+
+std::int32_t model_t::assimp_init(const std::string& path)
+{
+    Assimp::Importer importer;
+    const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
+
+    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+    {
+        std::cerr << "Assimp error: " << importer.GetErrorString() << std::endl;
+        return -1;
+    }
+
+    process_node(this, scene->mRootNode, scene);
+
+    this->initialized = true;
+    return 0;
+}
+
+model_t::model_t(const std::string& path, bool assimp)
+{
+    if (!assimp)
+    {
+        tiny_obj_init(path);
+        return;
+    }
+    assimp_init(path);
 }

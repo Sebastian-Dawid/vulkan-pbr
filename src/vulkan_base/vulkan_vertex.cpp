@@ -31,7 +31,7 @@ std::array<VkVertexInputAttributeDescription, 4> vertex_t::get_attribute_descrip
     attribute_descriptions[2].binding = 0;
     attribute_descriptions[2].location = 2;
     attribute_descriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attribute_descriptions[2].offset = offsetof(vertex_t, normal);
+    attribute_descriptions[2].offset = offsetof(vertex_t, tangent);
     
     attribute_descriptions[3].binding = 0;
     attribute_descriptions[3].location = 3;
@@ -45,9 +45,8 @@ namespace std
 {
     size_t hash<vertex_t>::operator()(vertex_t const& vertex) const
     {
-        return (((((hash<glm::vec3>()(vertex.pos) ^
+        return (((hash<glm::vec3>()(vertex.pos) ^
                   (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^
-                  (hash<glm::vec2>()(vertex.tex_coord) << 1)) >> 1) ^
-                  (hash<glm::vec3>()(vertex.tangent) << 1));
+                  (hash<glm::vec2>()(vertex.tex_coord) << 1));
     }
 };

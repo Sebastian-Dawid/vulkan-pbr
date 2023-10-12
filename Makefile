@@ -35,7 +35,7 @@ CFLAGS = -Wall -Wformat -I./includes -I./includes/imgui -I./src
 IMGUI_CFLAGS = -g -O3 -Wall -Wformat -I$(IMGUI_SRC_DIR) -I$(IMGUI_SRC_DIR)/backends -I$(IMGUI_SRC_DIR)/misc/cpp
 CXXFLAGS = -std=c++17
 CPPFLAGS = $(INC_FLAGS) -MMD -MP
-LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
+LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi -lassimp
 
 $(BUILD_DIR)/$(TARGET_EXEC): $(OBJS) $(SHADER_OBJS)
 	$(CXX) $(CXXFLAGS) $(CFLAGS) $(OBJS) -o $(BUILD_DIR)/$(TARGET_EXEC) $(LDFLAGS)
