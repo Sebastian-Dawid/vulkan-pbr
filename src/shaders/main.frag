@@ -17,7 +17,15 @@ layout (binding = 4) uniform light_t
     float quadratic;
 } light;
 
+layout (binding = 5) uniform view_t
+{
+    vec3 pos;
+    mat4 mat;
+} view;
+
 layout (location = 0) out vec4 out_color;
+
+const float PI = 3.14159265359;
 
 vec3 calc_point_light(vec3 pos, vec3 normal, vec3 diffuse, float metallic, float roughness, vec3 F0);
 
@@ -44,9 +52,32 @@ void main()
     out_color = vec4(Lo, 1.0);
 }
 
-vec3 calc_point_light(vec3 pos, vec3 normal, vec3 diffuse, float metallic, float roughness, vec3 F0)
+vec3 calc_point_light(vec3 pos, vec3 normal, vec3 albedo, float metallic, float roughness, vec3 F0)
 {
-    return vec3(0.0);
+    vec3 v = normalize(view.pos - pos);
+    vec3 l = normalize(light.pos - pos);
+    vec3 h = normalize(l + v);
+    
+    float dist = length(light.pos - pos);
+    float attenuation = 1.0 / (dist * dist);
+
+    vec3 radiance = light.color * attenuation;
+
+    float NDF = distribution_ggx(normal, h, roughness);
+    float G = geometry_smith(normal, v, l, roughness);
+    vec3 F = fresnel_schlick(max(dot(h, v), 0.0), F0);
+
+    vec3 numerator = NDF * G * F;
+    float denominator = 4.0 * max(dot(normal, v), 0.0) * max(dot(normal, l), 0.0) + 0.0001;
+    vec3 specular = numerator / denominator;
+
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+    kD *= 1.0 - metallic;
+
+    float nl = max(dot(normal, l), 0.0);
+
+    return ((kD * albedo / PI + specular) * radiance * nl);
 }
 
 float distribution_ggx(vec3 n, vec3 h, float roughness)
@@ -87,34 +118,4 @@ float geometry_smith(vec3 n, vec3 v, vec3 l, float roughness)
 vec3 fresnel_schlick(float cos_theta, vec3 f0)
 {
     return f0 + (1.0 - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
-}
-
-float dir_shadow_calc(dir_light_t light, vec3 pos, vec3 normal, vec3 light_dir)
-{
-    float shadow = 0.0;
-    mat4 i_view = ssao_active ? inverse(view) : mat4(1.0);
-    vec4 light_pos = light.light_space_matrix * i_view * vec4(pos, 1.0);
-    float bias = max(0.05 * (1.0 - dot(normal, light_dir)), 0.005);
-
-    vec3 proj_coord = light_pos.xyz / light_pos.w;
-    proj_coord = proj_coord * 0.5 + 0.5;
-    float current_depth = proj_coord.z;
-
-    vec2 texel_size = 1.0 / textureSize(light.shadow_map, 0);
-    for (int x = -1; x <= 1; ++x)
-    {
-        for (int y = -1; y <= 1; ++y)
-        {
-            float pcf_depth = texture(light.shadow_map, proj_coord.xy + vec2(x, y) * texel_size).r;
-            shadow += current_depth - bias  > pcf_depth ? 1.0 : 0.0;
-        }
-    }
-    shadow /= 9;
-
-    if (proj_coord.z > 1.0)
-    {
-        shadow = 0.0;
-    }
-
-    return shadow;
 }

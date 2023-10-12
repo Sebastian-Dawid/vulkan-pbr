@@ -14,6 +14,12 @@ struct ubo_t
     alignas(16) glm::mat4 projection;
 };
 
+struct view_t
+{
+    glm::vec3 pos;
+    alignas(16) glm::mat4 mat;
+};
+
 struct flags_t
 {
     alignas(4) bool normal_map;
@@ -192,8 +198,20 @@ int main(int argc, char** argv)
         ubo_buffer->map_memory();
         ubo_buffers.push_back(ubo_buffer);
     }
+    for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        buffer_settings_t ubo_settings;
+        ubo_settings.size = sizeof(view_t);
+        ubo_settings.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        ubo_settings.memory_properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        if (vk_context.add_buffer(ubo_settings) != 0) return -1;
+        buffer_t* ubo_buffer = vk_context.get_last_buffer();
+        ubo_buffer->map_memory();
+        ubo_buffers.push_back(ubo_buffer);
+    }
     g_descriptor_config.push_back(std::make_tuple(0, sizeof(ubo_t), &ubo_buffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
     g_descriptor_config.push_back(std::make_tuple(7, sizeof(flags_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
+    descriptor_config.push_back(std::make_tuple(5, sizeof(view_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT * 2], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
 
     image_settings_t image_settings;
     image_settings.format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -247,7 +265,8 @@ int main(int argc, char** argv)
     VkDescriptorSetLayoutBinding g_albedo_binding = { 2, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
     VkDescriptorSetLayoutBinding g_pbr_binding = { 3, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
     VkDescriptorSetLayoutBinding phong_layout_binding = { 4, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
-    std::vector<VkDescriptorSetLayoutBinding> out_bindings = { g_pos_binding, g_normal_binding, g_albedo_binding, g_pbr_binding, phong_layout_binding };
+    VkDescriptorSetLayoutBinding view_layout_binding = { 5, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
+    std::vector<VkDescriptorSetLayoutBinding> out_bindings = { g_pos_binding, g_normal_binding, g_albedo_binding, g_pbr_binding, phong_layout_binding, view_layout_binding };
 
     std::vector<image_t*> g_buffer;
     image_settings_t g_buffer_settings;
@@ -459,7 +478,8 @@ int main(int argc, char** argv)
             static std::chrono::time_point start_time = std::chrono::high_resolution_clock::now();
             std::chrono::time_point current_time = std::chrono::high_resolution_clock::now();
             float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-            static blinn_phong_t blinn_phong = { {0.0f, 6.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {10.0f, 0.0f, 0.0f}, 0.7f, 1.8f };
+            static blinn_phong_t blinn_phong = { {0.0f, 6.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {10.0f, 0.0f, 0.0f}, 0.09f, 0.032f };
+            blinn_phong.view_pos = cam.position;
             std::memcpy(blinn_phong_buffers[vk_context.get_current_frame()]->mapped_memory, &blinn_phong, sizeof(blinn_phong_t));
             static ubo_t ubo;
             time = 0.0f;
@@ -470,6 +490,10 @@ int main(int argc, char** argv)
             std::memcpy(ubo_buffers[vk_context.get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
             static flags_t flags = { true };
             std::memcpy(ubo_buffers[MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &flags, sizeof(flags_t));
+            static view_t view;
+            view.pos = cam.position;
+            view.mat = ubo.view;
+            std::memcpy(ubo_buffers[2 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &view, sizeof(view_t));
             
             if (vk_context.draw_frame(draw_command) != 0)
             {
