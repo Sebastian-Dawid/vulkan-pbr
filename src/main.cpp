@@ -27,12 +27,12 @@ struct flags_t
 
 struct blinn_phong_t
 {
-    glm::vec3 light_pos;
-    glm::vec3 light_color;
-    glm::vec3 view_pos;
+    alignas(16) glm::vec3 light_pos;
+    alignas(16) glm::vec3 light_color;
+    alignas(16) glm::vec3 view_pos;
 
-    float linear;
-    float quadratic;
+    alignas(4) float linear;
+    alignas(4) float quadratic;
 };
 
 std::vector<vertex_t> vertices = {
@@ -158,6 +158,13 @@ int main(int argc, char** argv)
     buffer_t* g_vertex_buffer = std::get<0>(bufs.value());
     buffer_t* g_index_buffer = std::get<1>(bufs.value());
     
+    model_t cube("./models/cube/cube.obj", false);
+    if (!cube.is_initialized()) return -1;
+    bufs = cube.set_up_buffer(&vk_context);
+    if (!bufs.has_value()) return -1;
+    buffer_t* forward_vertex_buffer = std::get<0>(bufs.value());
+    buffer_t* forward_index_buffer = std::get<1>(bufs.value());
+    
     buffer_settings_t vertex_buffer_settings;
     vertex_buffer_settings.populate_defaults(static_cast<std::uint32_t>(vertices.size()));
     if (vk_context.add_buffer(vertex_buffer_settings) != 0) return -1;
@@ -173,9 +180,10 @@ int main(int argc, char** argv)
 
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> g_descriptor_config;
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> descriptor_config;
+    std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> forward_descriptor_config;
 
     std::vector<buffer_t*> ubo_buffers;
-    for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    for (std::uint32_t i = 0; i < 2 * MAX_FRAMES_IN_FLIGHT; ++i)
     {
         buffer_settings_t ubo_settings;
         ubo_settings.size = sizeof(ubo_t);
@@ -185,7 +193,6 @@ int main(int argc, char** argv)
         buffer_t* ubo_buffer = vk_context.get_last_buffer();
         ubo_buffer->map_memory();
         ubo_buffers.push_back(ubo_buffer);
-        
     }
     for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
@@ -210,8 +217,9 @@ int main(int argc, char** argv)
         ubo_buffers.push_back(ubo_buffer);
     }
     g_descriptor_config.push_back(std::make_tuple(0, sizeof(ubo_t), &ubo_buffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
-    g_descriptor_config.push_back(std::make_tuple(7, sizeof(flags_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
-    descriptor_config.push_back(std::make_tuple(5, sizeof(view_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT * 2], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
+    g_descriptor_config.push_back(std::make_tuple(7, sizeof(flags_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT * 2], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
+    descriptor_config.push_back(std::make_tuple(5, sizeof(view_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT * 3], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
+    forward_descriptor_config.push_back(std::make_tuple(0, sizeof(ubo_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
 
     image_settings_t image_settings;
     image_settings.format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -267,6 +275,8 @@ int main(int argc, char** argv)
     VkDescriptorSetLayoutBinding phong_layout_binding = { 4, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
     VkDescriptorSetLayoutBinding view_layout_binding = { 5, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
     std::vector<VkDescriptorSetLayoutBinding> out_bindings = { g_pos_binding, g_normal_binding, g_albedo_binding, g_pbr_binding, phong_layout_binding, view_layout_binding };
+
+    std::vector<VkDescriptorSetLayoutBinding> forward_bindings = { UBO_LAYOUT_BINDING };
 
     std::vector<image_t*> g_buffer;
     image_settings_t g_buffer_settings;
@@ -338,6 +348,12 @@ int main(int argc, char** argv)
     render_pass_settings.add_subpass(VK_FORMAT_R16G16B16A16_SFLOAT, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 4, 1, 0);
     render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 0, 0, 4);
     render_pass_settings.attachments.back().finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 1, 0, 0);
+    // remove added color and depth attachments
+    render_pass_settings.attachments.pop_back();
+    render_pass_settings.attachments.pop_back();
+    render_pass_settings.subpasses.back().depth_attachment_reference.back().attachment = 4;
+    render_pass_settings.subpasses.back().color_attachment_references.back().attachment = 5;
 
     {
         VkSubpassDependency& dep = render_pass_settings.dependencies.front();
@@ -349,7 +365,7 @@ int main(int argc, char** argv)
         dep.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
         dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
-        dep = render_pass_settings.dependencies.back();
+        dep = render_pass_settings.dependencies[1];
         dep.srcSubpass = VK_SUBPASS_EXTERNAL;
         dep.dstSubpass = 0;
         dep.srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
@@ -357,17 +373,35 @@ int main(int argc, char** argv)
         dep.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
         dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+        dep = render_pass_settings.dependencies[2];
+        dep.srcSubpass = 0;
+        dep.dstSubpass = 1;
+        dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dep.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+        dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     }
 
     VkSubpassDependency dep{};
-    dep.srcSubpass = 0;
-    dep.dstSubpass = 1;
+    dep.srcSubpass = 1;
+    dep.dstSubpass = 2;
     dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     dep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    dep.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+    dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    render_pass_settings.dependencies.push_back(dep);
 
+    dep = {};
+    dep.srcSubpass = 2;
+    dep.dstSubpass = VK_SUBPASS_EXTERNAL;
+    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dep.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+    dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     render_pass_settings.dependencies.push_back(dep);
 
     render_pass_t* render_pass = new render_pass_t();
@@ -396,9 +430,17 @@ int main(int argc, char** argv)
     pipeline_settings.subpass = 1;
     if (vk_context.add_pipeline(shaders, pipeline_settings) != 0) return -1;
 
+    vk_context.add_descriptor_set_layout(forward_bindings);
+    pipeline_shaders_t forward_shaders = { "./build/target/shaders/forward.vert.spv", std::nullopt, "./build/target/shaders/forward.frag.spv" };
+    pipeline_settings_t forward_pipeline_settings;
+    forward_pipeline_settings.populate_defaults({ vk_context.get_descriptor_set_layouts()[2] }, vk_context.render_passes[0]);
+    forward_pipeline_settings.subpass = 2;
+    if (vk_context.add_pipeline(forward_shaders, forward_pipeline_settings) != 0) return -1;
+
     std::vector<descriptor_pool_t*> pools = *vk_context.get_descriptor_pools();
     pools[0]->configure_descriptors(g_descriptor_config);
     pools[1]->configure_descriptors(descriptor_config);
+    pools[2]->configure_descriptors(forward_descriptor_config);
 
     std::function<void(VkCommandBuffer, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, vulkan_context_t* context)
     {
@@ -455,6 +497,34 @@ int main(int argc, char** argv)
 
             vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
         }
+
+        vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
+
+        {
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->graphics_pipelines[2]->pipeline);
+            context->current_pipeline = context->graphics_pipelines[2];
+            VkViewport viewport{};
+            viewport.x = 0.0f;
+            viewport.y = 0.0f;
+            viewport.width = static_cast<float>(context->get_swap_chain_extent().width);
+            viewport.height = static_cast<float>(context->get_swap_chain_extent().height);
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
+            vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+            VkRect2D scissor{};
+            scissor.offset = { 0, 0 };
+            scissor.extent = context->get_swap_chain_extent();
+            vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+            VkBuffer vertex_buffers[] = { forward_vertex_buffer->buffer };
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+            vkCmdBindIndexBuffer(command_buffer, forward_index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
+            context->bind_descriptor_sets(command_buffer, 2, 0);
+            
+            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(cube.indices.size()), 1, 0, 0, 0);
+        }
     };
 
     vk_context.main_loop([&]
@@ -478,7 +548,7 @@ int main(int argc, char** argv)
             static std::chrono::time_point start_time = std::chrono::high_resolution_clock::now();
             std::chrono::time_point current_time = std::chrono::high_resolution_clock::now();
             float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-            static blinn_phong_t blinn_phong = { {0.0f, 6.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {10.0f, 0.0f, 0.0f}, 0.09f, 0.032f };
+            static blinn_phong_t blinn_phong = { {0.0f, 0.0f, 3.0f}, {0.2f, 0.2f, 0.6f}, {10.0f, 0.0f, 0.0f}, 0.09f, 0.032f };
             blinn_phong.view_pos = cam.position;
             std::memcpy(blinn_phong_buffers[vk_context.get_current_frame()]->mapped_memory, &blinn_phong, sizeof(blinn_phong_t));
             static ubo_t ubo;
@@ -488,12 +558,15 @@ int main(int argc, char** argv)
             ubo.projection = glm::perspective(glm::radians(cam.fov_angle), vk_context.get_swap_chain_extent().width / (float) vk_context.get_swap_chain_extent().height, 0.1f, 100.0f);
             ubo.projection[1][1] *= -1;
             std::memcpy(ubo_buffers[vk_context.get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
+            ubo.model = glm::translate(ubo.model, glm::vec3(0.0f, 0.0f, 3.0f));
+            ubo.model = glm::scale(ubo.model, glm::vec3(0.1f, 0.1f, 0.1f));
+            std::memcpy(ubo_buffers[MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
             static flags_t flags = { true };
-            std::memcpy(ubo_buffers[MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &flags, sizeof(flags_t));
+            std::memcpy(ubo_buffers[2 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &flags, sizeof(flags_t));
             static view_t view;
             view.pos = cam.position;
             view.mat = ubo.view;
-            std::memcpy(ubo_buffers[2 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &view, sizeof(view_t));
+            std::memcpy(ubo_buffers[3 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &view, sizeof(view_t));
             
             if (vk_context.draw_frame(draw_command) != 0)
             {
