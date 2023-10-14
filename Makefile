@@ -37,8 +37,8 @@ CXXFLAGS = -std=c++17
 CPPFLAGS = $(INC_FLAGS) -MMD -MP
 LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi -lassimp
 
-$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS) $(SHADER_OBJS)
-	$(CXX) $(CXXFLAGS) $(CFLAGS) $(OBJS) -o $(BUILD_DIR)/$(TARGET_EXEC) $(LDFLAGS)
+$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS) $(IMGUI_OBJS) $(SHADER_OBJS)
+	$(CXX) $(CXXFLAGS) $(CFLAGS) $(OBJS) $(IMGUI_OBJS) -o $(BUILD_DIR)/$(TARGET_EXEC) $(LDFLAGS)
 
 $(MAIN_BUILD)/%.spv: $(SRC_DIRS)/%
 	mkdir -p $(dir $@)
@@ -50,7 +50,7 @@ $(MAIN_BUILD)/%.cpp.o: $(SRC_DIRS)/%.cpp
 
 $(IMGUI_BUILD)/%.cpp.o: %.cpp
 	mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(IMGUI_CFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(IMGUI_CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 .PHONY: test clean release build_debug build_release
 

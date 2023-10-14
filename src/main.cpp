@@ -1,3 +1,6 @@
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_vulkan.h>
 #include "vulkan_base/vulkan_base.h"
 #include "vulkan_base/vulkan_vertex.h"
 #include "model_base/model_base.h"
@@ -52,7 +55,6 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mode)
 {
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) 
     {
-        std::cout << "cam active" << std::endl;
         camera_active = true;
     }
     else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE) camera_active = false;
@@ -404,6 +406,17 @@ int main(int argc, char** argv)
     dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     render_pass_settings.dependencies.push_back(dep);
 
+    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device);
+    render_pass_settings.attachments.pop_back();
+    render_pass_settings.subpasses.back().color_attachment_references.back().attachment = 5;
+    VkSubpassDependency& imgui_dep = render_pass_settings.dependencies.back();
+    imgui_dep.srcSubpass = 2;
+    imgui_dep.dstSubpass = 3;
+    imgui_dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    imgui_dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    imgui_dep.srcAccessMask = 0;
+    imgui_dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
     render_pass_t* render_pass = new render_pass_t();
     render_pass->init(render_pass_settings, vk_context.device->device);
     for (std::uint32_t i = 0; i < vk_context.swap_chain->image_views.size(); ++i)
@@ -441,6 +454,52 @@ int main(int argc, char** argv)
     pools[0]->configure_descriptors(g_descriptor_config);
     pools[1]->configure_descriptors(descriptor_config);
     pools[2]->configure_descriptors(forward_descriptor_config);
+
+    // START IMGUI SETUP
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    ImGui::StyleColorsDark();
+
+    VkDescriptorPoolSize pool_sizes[] = { {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1} };
+    VkDescriptorPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pool_info.maxSets = 1;
+    pool_info.poolSizeCount = (std::uint32_t)IM_ARRAYSIZE(pool_sizes);
+    pool_info.pPoolSizes = pool_sizes;
+    VkDescriptorPool imgui_pool;
+    vkCreateDescriptorPool(vk_context.device->device, &pool_info, nullptr, &imgui_pool);
+
+    ImGui_ImplGlfw_InitForVulkan(vk_context.window, true);
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.Instance = vk_context.instance;
+    init_info.PhysicalDevice = vk_context.physical_device;
+    init_info.Device = vk_context.device->device;
+    init_info.QueueFamily = vk_context.device->indices.graphics_family.value();
+    init_info.Queue = vk_context.device->graphics_queue;
+    init_info.PipelineCache = VK_NULL_HANDLE;
+    init_info.DescriptorPool = imgui_pool;
+    init_info.Subpass = 3;
+    init_info.MinImageCount = MAX_FRAMES_IN_FLIGHT;
+    init_info.ImageCount = vk_context.swap_chain->images.size();
+    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    init_info.Allocator = nullptr;
+    init_info.CheckVkResultFn = [](VkResult err){ if (err == 0) return; fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err); if (err < 0) abort(); };
+    ImGui_ImplVulkan_Init(&init_info, vk_context.render_passes.back()->render_pass);
+
+    {
+        VkCommandBuffer buf = begin_single_time_commands(vk_context.device->device, vk_context.command_pool);
+        ImGui_ImplVulkan_CreateFontsTexture(buf);
+        end_single_time_commands(vk_context.command_pool, buf, vk_context.device->device, vk_context.device->graphics_queue);
+        vkDeviceWaitIdle(vk_context.device->device);
+        ImGui_ImplVulkan_DestroyFontUploadObjects();
+    }
+
+    ImDrawData* draw_data;
+    // END IMGUI SETUP
 
     std::function<void(VkCommandBuffer, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, vulkan_context_t* context)
     {
@@ -525,6 +584,9 @@ int main(int argc, char** argv)
             
             vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(cube.indices.size()), 1, 0, 0, 0);
         }
+
+        vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
+        ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer);
     };
 
     vk_context.main_loop([&]
@@ -568,12 +630,25 @@ int main(int argc, char** argv)
             view.mat = ubo.view;
             std::memcpy(ubo_buffers[3 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &view, sizeof(view_t));
             
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+
+            ImGui::ShowDemoWindow();
+
+            ImGui::Render();
+            draw_data = ImGui::GetDrawData();
+
             if (vk_context.draw_frame(draw_command) != 0)
             {
                 break;
             }
         }
     });
+
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
 
     glfwTerminate();
     return 0;
