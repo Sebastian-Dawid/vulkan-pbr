@@ -646,6 +646,7 @@ int main(int argc, char** argv)
         }
     });
 
+    vkDestroyDescriptorPool(vk_context.device->device, imgui_pool, nullptr);
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
