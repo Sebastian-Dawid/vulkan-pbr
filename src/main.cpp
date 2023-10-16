@@ -78,6 +78,65 @@ void scroll_callback(GLFWwindow* window, double x_offset, double y_offset)
     if (camera_active) cam.zoom(y_offset);
 }
 
+void imgui_add_dependency(std::uint32_t subpass, std::uint32_t attachment, vulkan_context_t* vk_context, render_pass_settings_t& settings)
+{
+    settings.add_subpass(vk_context->swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context->physical_device);
+    settings.attachments.pop_back();
+    settings.subpasses.back().color_attachment_references.back().attachment = attachment;
+    VkSubpassDependency& imgui_dep = settings.dependencies.back();
+    imgui_dep.srcSubpass = subpass - 1;
+    imgui_dep.dstSubpass = subpass;
+    imgui_dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    imgui_dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    imgui_dep.srcAccessMask = 0;
+    imgui_dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+}
+
+VkDescriptorPool imgui_setup(std::uint32_t subpass, vulkan_context_t* vk_context)
+{
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    ImGui::StyleColorsDark();
+
+    VkDescriptorPoolSize pool_sizes[] = { {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1} };
+    VkDescriptorPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pool_info.maxSets = 1;
+    pool_info.poolSizeCount = (std::uint32_t)IM_ARRAYSIZE(pool_sizes);
+    pool_info.pPoolSizes = pool_sizes;
+    VkDescriptorPool imgui_pool;
+    vkCreateDescriptorPool(vk_context->device->device, &pool_info, nullptr, &imgui_pool);
+
+    ImGui_ImplGlfw_InitForVulkan(vk_context->window, true);
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.Instance = vk_context->instance;
+    init_info.PhysicalDevice = vk_context->physical_device;
+    init_info.Device = vk_context->device->device;
+    init_info.QueueFamily = vk_context->device->indices.graphics_family.value();
+    init_info.Queue = vk_context->device->graphics_queue;
+    init_info.PipelineCache = VK_NULL_HANDLE;
+    init_info.DescriptorPool = imgui_pool;
+    init_info.Subpass = subpass;
+    init_info.MinImageCount = MAX_FRAMES_IN_FLIGHT;
+    init_info.ImageCount = vk_context->swap_chain->images.size();
+    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    init_info.Allocator = nullptr;
+    init_info.CheckVkResultFn = [](VkResult err){ if (err == 0) return; fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err); if (err < 0) abort(); };
+    ImGui_ImplVulkan_Init(&init_info, vk_context->render_passes.back()->render_pass);
+
+    {
+        VkCommandBuffer buf = begin_single_time_commands(vk_context->device->device, vk_context->command_pool);
+        ImGui_ImplVulkan_CreateFontsTexture(buf);
+        end_single_time_commands(vk_context->command_pool, buf, vk_context->device->device, vk_context->device->graphics_queue);
+        vkDeviceWaitIdle(vk_context->device->device);
+        ImGui_ImplVulkan_DestroyFontUploadObjects();
+    }
+    return imgui_pool;
+}
+
 int main(int argc, char** argv)
 {
 
@@ -183,6 +242,7 @@ int main(int argc, char** argv)
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> g_descriptor_config;
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> descriptor_config;
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> forward_descriptor_config;
+    std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> hdr_descriptor_config;
 
     std::vector<buffer_t*> ubo_buffers;
     for (std::uint32_t i = 0; i < 2 * MAX_FRAMES_IN_FLIGHT; ++i)
@@ -279,11 +339,12 @@ int main(int argc, char** argv)
     std::vector<VkDescriptorSetLayoutBinding> out_bindings = { g_pos_binding, g_normal_binding, g_albedo_binding, g_pbr_binding, phong_layout_binding, view_layout_binding };
 
     std::vector<VkDescriptorSetLayoutBinding> forward_bindings = { UBO_LAYOUT_BINDING };
+    std::vector<VkDescriptorSetLayoutBinding> hdr_bindings = { {0, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr} };
 
     std::vector<image_t*> g_buffer;
     image_settings_t g_buffer_settings;
     g_buffer_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
-    g_buffer_settings.format = VK_FORMAT_R16G16B16A16_SFLOAT;//vk_context.swap_chain->format.format;
+    g_buffer_settings.format = VK_FORMAT_R16G16B16A16_SFLOAT;
     g_buffer_settings.usage = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     // POS
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
@@ -309,33 +370,21 @@ int main(int argc, char** argv)
     g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     vk_context.color_buffers.push_back(g_buffer.back());
 
+    image_settings_t hdr_buffer_settings;
+    hdr_buffer_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
+    hdr_buffer_settings.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    hdr_buffer_settings.usage = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    image_t* hdr_buffer = new image_t(&vk_context.physical_device, &vk_context.command_pool);
+    hdr_buffer->init_color_buffer(hdr_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
+    hdr_buffer->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    vk_context.color_buffers.push_back(hdr_buffer);
+
     image_settings_t g_depth_settings;
     g_depth_settings.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     g_depth_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
     g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
     g_buffer.back()->init_depth_buffer(g_depth_settings, vk_context.get_swap_chain_extent(), vk_context.device);
     vk_context.depth_buffers.push_back(g_buffer.back());
-
-    // resolve buffers for the msaa
-    image_settings_t resolve_buffer_settings;
-    resolve_buffer_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
-    resolve_buffer_settings.format = vk_context.swap_chain->format.format;
-    resolve_buffer_settings.usage = VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-    /*g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
-    g_buffer.back()->init_color_buffer(resolve_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
-    g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    vk_context.color_buffers.push_back(g_buffer.back());
-    
-    g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
-    g_buffer.back()->init_color_buffer(resolve_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
-    g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    vk_context.color_buffers.push_back(g_buffer.back());
-    
-    g_buffer.push_back(new image_t(&vk_context.physical_device, &vk_context.command_pool));
-    g_buffer.back()->init_color_buffer(resolve_buffer_settings, vk_context.get_swap_chain_extent(), vk_context.device);
-    g_buffer.back()->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    vk_context.color_buffers.push_back(g_buffer.back());*/
 
     image_t** g_pos = &vk_context.color_buffers[0];
     descriptor_config.push_back(std::make_tuple(0, 0, g_pos, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
@@ -345,77 +394,92 @@ int main(int argc, char** argv)
     descriptor_config.push_back(std::make_tuple(2, 0, g_albedo, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
     image_t** g_pbr = &vk_context.color_buffers[3];
     descriptor_config.push_back(std::make_tuple(3, 0, g_pbr, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
-
+    image_t** hdr = &vk_context.color_buffers[4];
+    hdr_descriptor_config.push_back(std::make_tuple(0, 0, hdr, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, false));
+    
     render_pass_settings_t render_pass_settings;
     render_pass_settings.add_subpass(VK_FORMAT_R16G16B16A16_SFLOAT, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 4, 1, 0);
-    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 0, 0, 4);
-    render_pass_settings.attachments.back().finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 1, 0, 0);
+    render_pass_settings.add_subpass(VK_FORMAT_R16G16B16A16_SFLOAT, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 0, 0, 4);
+    render_pass_settings.add_subpass(VK_FORMAT_R16G16B16A16_SFLOAT, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 1, 0, 0);
     // remove added color and depth attachments
     render_pass_settings.attachments.pop_back();
     render_pass_settings.attachments.pop_back();
     render_pass_settings.subpasses.back().depth_attachment_reference.back().attachment = 4;
     render_pass_settings.subpasses.back().color_attachment_references.back().attachment = 5;
+    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 0, 0, 1, 5);
+    render_pass_settings.attachments.back().finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-    {
-        VkSubpassDependency& dep = render_pass_settings.dependencies.front();
-        dep.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dep.dstSubpass = 0;
-        dep.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-        dep.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-        dep.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-        dep.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-        dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-        dep = render_pass_settings.dependencies[1];
-        dep.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dep.dstSubpass = 0;
-        dep.srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-        dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dep.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-        dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-        dep = render_pass_settings.dependencies[2];
-        dep.srcSubpass = 0;
-        dep.dstSubpass = 1;
-        dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        dep.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-        dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-    }
-
+    render_pass_settings.dependencies.clear();
     VkSubpassDependency dep{};
+    dep.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dep.dstSubpass = 0;
+    dep.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    dep.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    dep.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    dep.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    render_pass_settings.dependencies.push_back(dep);
+
+    dep = {};
+    dep.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dep.dstSubpass = 0;
+    dep.srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    render_pass_settings.dependencies.push_back(dep);
+
+    dep = {};
+    dep.srcSubpass = 0;
+    dep.dstSubpass = 1;
+    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dep.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+    dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    render_pass_settings.dependencies.push_back(dep);
+
+    dep = {};
     dep.srcSubpass = 1;
     dep.dstSubpass = 2;
     dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     dep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+    dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    render_pass_settings.dependencies.push_back(dep);
+
+    dep.srcSubpass = 2;
+    dep.dstSubpass = 3;
+    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+    dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    render_pass_settings.dependencies.push_back(dep);
+    
+    dep = {};
+    dep.srcSubpass = 0;
+    dep.dstSubpass = 2;
+    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
     dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     render_pass_settings.dependencies.push_back(dep);
 
     dep = {};
-    dep.srcSubpass = 2;
+    dep.srcSubpass = 3;
     dep.dstSubpass = VK_SUBPASS_EXTERNAL;
     dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     dep.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
     dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    dep.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+    dep.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
     dep.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
     render_pass_settings.dependencies.push_back(dep);
 
-    render_pass_settings.add_subpass(vk_context.swap_chain->format.format, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device);
-    render_pass_settings.attachments.pop_back();
-    render_pass_settings.subpasses.back().color_attachment_references.back().attachment = 5;
-    VkSubpassDependency& imgui_dep = render_pass_settings.dependencies.back();
-    imgui_dep.srcSubpass = 2;
-    imgui_dep.dstSubpass = 3;
-    imgui_dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    imgui_dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    imgui_dep.srcAccessMask = 0;
-    imgui_dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    imgui_add_dependency(4, 6, &vk_context, render_pass_settings);
 
     render_pass_t* render_pass = new render_pass_t();
     render_pass->init(render_pass_settings, vk_context.device->device);
@@ -423,8 +487,7 @@ int main(int argc, char** argv)
     {
         std::vector<framebuffer_attachment_t> attachments = { {&vk_context.color_buffers[0], IMAGE}, {&vk_context.color_buffers[1], IMAGE},
             {&vk_context.color_buffers[2], IMAGE}, {&vk_context.color_buffers[3]}, {&vk_context.depth_buffers[0], IMAGE},
-            /*{&vk_context.color_buffers[4], IMAGE}, {&vk_context.color_buffers[5], IMAGE},*/
-            /*{&vk_context.color_buffer, IMAGE}, {&vk_context.depth_buffer, IMAGE},*/ {&vk_context.swap_chain, SWAP_CHAIN, i} };
+            {&vk_context.color_buffers[4]}, {&vk_context.swap_chain, SWAP_CHAIN, i} };
         render_pass->add_framebuffer(vk_context.swap_chain->extent.width, vk_context.swap_chain->extent.height, attachments);
     }
     vk_context.render_passes.push_back(render_pass);
@@ -450,57 +513,21 @@ int main(int argc, char** argv)
     forward_pipeline_settings.subpass = 2;
     if (vk_context.add_pipeline(forward_shaders, forward_pipeline_settings) != 0) return -1;
 
+    vk_context.add_descriptor_set_layout(hdr_bindings);
+    pipeline_shaders_t hdr_shaders = { "./build/target/shaders/hdr.vert.spv", std::nullopt, "./build/target/shaders/hdr.frag.spv" };
+    pipeline_settings_t hdr_pipeline_settings;
+    hdr_pipeline_settings.populate_defaults({ vk_context.get_descriptor_set_layouts()[3] }, vk_context.render_passes[0]);
+    hdr_pipeline_settings.subpass = 3;
+    if (vk_context.add_pipeline(hdr_shaders, hdr_pipeline_settings) != 0) return -1;
+
     std::vector<descriptor_pool_t*> pools = *vk_context.get_descriptor_pools();
     pools[0]->configure_descriptors(g_descriptor_config);
     pools[1]->configure_descriptors(descriptor_config);
     pools[2]->configure_descriptors(forward_descriptor_config);
+    pools[3]->configure_descriptors(hdr_descriptor_config);
 
-    // START IMGUI SETUP
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    ImGui::StyleColorsDark();
-
-    VkDescriptorPoolSize pool_sizes[] = { {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1} };
-    VkDescriptorPoolCreateInfo pool_info = {};
-    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    pool_info.maxSets = 1;
-    pool_info.poolSizeCount = (std::uint32_t)IM_ARRAYSIZE(pool_sizes);
-    pool_info.pPoolSizes = pool_sizes;
-    VkDescriptorPool imgui_pool;
-    vkCreateDescriptorPool(vk_context.device->device, &pool_info, nullptr, &imgui_pool);
-
-    ImGui_ImplGlfw_InitForVulkan(vk_context.window, true);
-    ImGui_ImplVulkan_InitInfo init_info = {};
-    init_info.Instance = vk_context.instance;
-    init_info.PhysicalDevice = vk_context.physical_device;
-    init_info.Device = vk_context.device->device;
-    init_info.QueueFamily = vk_context.device->indices.graphics_family.value();
-    init_info.Queue = vk_context.device->graphics_queue;
-    init_info.PipelineCache = VK_NULL_HANDLE;
-    init_info.DescriptorPool = imgui_pool;
-    init_info.Subpass = 3;
-    init_info.MinImageCount = MAX_FRAMES_IN_FLIGHT;
-    init_info.ImageCount = vk_context.swap_chain->images.size();
-    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    init_info.Allocator = nullptr;
-    init_info.CheckVkResultFn = [](VkResult err){ if (err == 0) return; fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err); if (err < 0) abort(); };
-    ImGui_ImplVulkan_Init(&init_info, vk_context.render_passes.back()->render_pass);
-
-    {
-        VkCommandBuffer buf = begin_single_time_commands(vk_context.device->device, vk_context.command_pool);
-        ImGui_ImplVulkan_CreateFontsTexture(buf);
-        end_single_time_commands(vk_context.command_pool, buf, vk_context.device->device, vk_context.device->graphics_queue);
-        vkDeviceWaitIdle(vk_context.device->device);
-        ImGui_ImplVulkan_DestroyFontUploadObjects();
-    }
-
+    VkDescriptorPool imgui_pool = imgui_setup(4, &vk_context);
     ImDrawData* draw_data;
-    // END IMGUI SETUP
-
     std::function<void(VkCommandBuffer, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, vulkan_context_t* context)
     {
         {
@@ -586,6 +613,34 @@ int main(int argc, char** argv)
         }
 
         vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
+
+        {
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->graphics_pipelines[3]->pipeline);
+            context->current_pipeline = context->graphics_pipelines[3];
+            VkViewport viewport{};
+            viewport.x = 0.0f;
+            viewport.y = 0.0f;
+            viewport.width = static_cast<float>(context->get_swap_chain_extent().width);
+            viewport.height = static_cast<float>(context->get_swap_chain_extent().height);
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
+            vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+            VkRect2D scissor{};
+            scissor.offset = { 0, 0 };
+            scissor.extent = context->get_swap_chain_extent();
+            vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+            VkBuffer vertex_buffers[] = { vertex_buffer->buffer };
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+            vkCmdBindIndexBuffer(command_buffer, index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
+            context->bind_descriptor_sets(command_buffer, 3, 0);
+
+            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
+        }
+
+        vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
         ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer);
     };
 
@@ -610,9 +665,9 @@ int main(int argc, char** argv)
             static std::chrono::time_point start_time = std::chrono::high_resolution_clock::now();
             std::chrono::time_point current_time = std::chrono::high_resolution_clock::now();
             float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-            static blinn_phong_t blinn_phong = { {0.0f, 0.0f, 3.0f}, {0.2f, 0.2f, 0.6f}, {10.0f, 0.0f, 0.0f}, 0.09f, 0.032f };
+            static blinn_phong_t blinn_phong = { {0.0f, 0.0f, 3.0f}, {.2f, .2f, .6f}, {10.0f, 0.0f, 0.0f}, 0.09f, 0.032f };
+            static float scale = 0.1;
             blinn_phong.view_pos = cam.position;
-            std::memcpy(blinn_phong_buffers[vk_context.get_current_frame()]->mapped_memory, &blinn_phong, sizeof(blinn_phong_t));
             static ubo_t ubo;
             time = 0.0f;
             ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -620,8 +675,8 @@ int main(int argc, char** argv)
             ubo.projection = glm::perspective(glm::radians(cam.fov_angle), vk_context.get_swap_chain_extent().width / (float) vk_context.get_swap_chain_extent().height, 0.1f, 100.0f);
             ubo.projection[1][1] *= -1;
             std::memcpy(ubo_buffers[vk_context.get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
-            ubo.model = glm::translate(ubo.model, glm::vec3(0.0f, 0.0f, 3.0f));
-            ubo.model = glm::scale(ubo.model, glm::vec3(0.1f, 0.1f, 0.1f));
+            ubo.model = glm::translate(glm::mat4(1.0f), blinn_phong.light_pos);
+            ubo.model = glm::scale(ubo.model, glm::vec3(scale, scale, scale));
             std::memcpy(ubo_buffers[MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &ubo, sizeof(ubo_t));
             static flags_t flags = { true };
             std::memcpy(ubo_buffers[2 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &flags, sizeof(flags_t));
@@ -629,12 +684,23 @@ int main(int argc, char** argv)
             view.pos = cam.position;
             view.mat = ubo.view;
             std::memcpy(ubo_buffers[3 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &view, sizeof(view_t));
-            
+
             ImGui_ImplVulkan_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
 
-            ImGui::ShowDemoWindow();
+            //ImGui::ShowDemoWindow();
+            {
+                ImGuiIO& io = ImGui::GetIO();
+                ImGui::Begin("Settings");
+                ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+                ImGui::SliderFloat3("light pos", &blinn_phong.light_pos.r, -5.0f, 5.0f);
+                ImGui::SliderFloat("scale", &scale, 0.01f, 0.5f);
+                ImGui::ColorEdit3("light color", &blinn_phong.light_color.r, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
+                ImGui::End();
+            }
+
+            std::memcpy(blinn_phong_buffers[vk_context.get_current_frame()]->mapped_memory, &blinn_phong, sizeof(blinn_phong_t));
 
             ImGui::Render();
             draw_data = ImGui::GetDrawData();
