@@ -19,7 +19,7 @@ struct ubo_t
 
 struct view_t
 {
-    glm::vec3 pos;
+    alignas(16) glm::vec3 pos;
     alignas(16) glm::mat4 mat;
 };
 
@@ -32,6 +32,7 @@ struct blinn_phong_t
 {
     alignas(16) glm::vec3 light_pos;
     alignas(16) glm::vec3 light_color;
+    alignas(16) glm::vec3 ambient_color;
     alignas(16) glm::vec3 view_pos;
 
     alignas(4) float linear;
@@ -665,7 +666,7 @@ int main(int argc, char** argv)
             static std::chrono::time_point start_time = std::chrono::high_resolution_clock::now();
             std::chrono::time_point current_time = std::chrono::high_resolution_clock::now();
             float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-            static blinn_phong_t blinn_phong = { {0.0f, 0.0f, 3.0f}, {.2f, .2f, .6f}, {10.0f, 0.0f, 0.0f}, 0.09f, 0.032f };
+            static blinn_phong_t blinn_phong = { {0.0f, 0.0f, 3.0f}, {.2f, .2f, .6f}, {.02f, .02f, .06f}, {10.0f, 0.0f, 0.0f}, 0.09f, 0.032f };
             static float scale = 0.1;
             blinn_phong.view_pos = cam.position;
             static ubo_t ubo;
@@ -697,6 +698,7 @@ int main(int argc, char** argv)
                 ImGui::SliderFloat3("light pos", &blinn_phong.light_pos.r, -5.0f, 5.0f);
                 ImGui::SliderFloat("scale", &scale, 0.01f, 0.5f);
                 ImGui::ColorEdit3("light color", &blinn_phong.light_color.r, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
+                ImGui::ColorEdit3("ambient light color", &blinn_phong.ambient_color.r, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
                 ImGui::End();
             }
 

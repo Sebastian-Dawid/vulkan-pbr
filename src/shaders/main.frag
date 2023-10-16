@@ -11,6 +11,7 @@ layout (binding = 4) uniform light_t
 {
     vec3 pos;
     vec3 color;
+    vec3 ambient;
     vec3 view_pos;
 
     float linear;
@@ -47,7 +48,7 @@ void main()
 
     Lo += calc_point_light(frag_pos, normal, diffuse, pbr.r, pbr.g, F0);
 
-    Lo += diffuse * light.color * pbr.b;
+    Lo += diffuse * light.ambient * pbr.b;
 
     out_color = vec4(Lo, 1.0);
 }
