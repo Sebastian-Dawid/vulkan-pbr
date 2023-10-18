@@ -60,13 +60,13 @@ clean:
 test: clean build_debug
 	$(BUILD_DIR)/$(TARGET_EXEC)
 
-build_debug: CFLAGS += -g $(NVIDIA)
+build_debug: CFLAGS += -g $(NVIDIA) $(PROTABILITY)
 build_debug: $(OBJS) $(SHADER_OBJS) $(BUILD_DIR)/$(TARGET_EXEC)
 
 release: clean build_release
 	$(BUILD_DIR)/$(TARGET_EXEC)
 
-build_release: CFLAGS += -DNDEBUG -O3 $(NVIDIA)
+build_release: CFLAGS += -DNDEBUG -O3 $(NVIDIA) $(PORTABILITY)
 build_release: clean $(BUILD_DIR)/$(TARGET_EXEC)
 
 -include $(DEPS)
