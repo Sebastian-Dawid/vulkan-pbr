@@ -110,9 +110,16 @@ std::int32_t swap_chain_t::init(const logical_device_t* logical_device, VkSurfac
     vkGetSwapchainImagesKHR(logical_device->device, this->swap_chain, &image_count, this->images.data());
     
     this->image_views.resize(image_count);
+    image_view_settings_t image_view_settings = {
+        .view = &this->image_views[0],
+        .format = this->format.format,
+        .device = *this->device,
+    };
     for (std::uint32_t i = 0; i < image_count; ++i)
     {
-        create_image_view(this->image_views[i], this->images[i], this->format.format, *this->device);
+        image_view_settings.view = &this->image_views[i];
+        image_view_settings.image = this->images[i];
+        create_image_view(image_view_settings);
     }
 
     return 0;

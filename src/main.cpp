@@ -240,6 +240,25 @@ int main(int argc, char** argv)
     buffer_t* index_buffer = vk_context.get_last_buffer();
     index_buffer->set_staged_data(indices.data());
 
+    
+    image_settings_t shadow_map_settings;
+    shadow_map_settings.format = VK_FORMAT_R32_SFLOAT;
+    shadow_map_settings.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    shadow_map_settings.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    shadow_map_settings.layer_count = 6;
+    image_view_settings_t shadow_map_view_settings = {
+        .type = VK_IMAGE_VIEW_TYPE_CUBE,
+        .format = VK_FORMAT_R32_SFLOAT,
+        .layer_count = 6,
+        .components = { VK_COMPONENT_SWIZZLE_R }
+    };
+    image_t* shadow_map = new image_t(&vk_context.physical_device, &vk_context.command_pool);
+    shadow_map->init_color_buffer(shadow_map_settings, { 1024, 1024 }, vk_context.device, shadow_map_view_settings);
+    shadow_map->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    sampler_settings_t shadow_sampler_settings;
+    shadow_map->create_image_sampler(shadow_sampler_settings);
+    
+
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> g_descriptor_config;
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> descriptor_config;
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> forward_descriptor_config;
@@ -714,6 +733,7 @@ int main(int argc, char** argv)
         }
     });
 
+    delete shadow_map;
     vkDestroyDescriptorPool(vk_context.device->device, imgui_pool, nullptr);
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();

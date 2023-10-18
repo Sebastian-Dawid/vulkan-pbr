@@ -13,9 +13,26 @@ struct image_settings_t
     VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     std::uint32_t mip_levels = 1;
+    std::uint32_t layer_count = 1;
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkSampleCountFlagBits sample_count = VK_SAMPLE_COUNT_1_BIT;
     VkSharingMode sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
+    VkImageCreateFlags flags = 0;
+};
+
+struct image_view_settings_t
+{
+    VkImageView *view;
+    VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
+    VkImage image;
+    VkFormat format;
+    VkDevice device;
+    VkImageAspectFlags aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+    std::uint32_t base_mip_level = 0;
+    std::uint32_t mip_levels = 1;
+    std::uint32_t base_array_layer = 0;
+    std::uint32_t layer_count = 1;
+    VkComponentMapping components;
 };
 
 struct sampler_settings_t
@@ -58,6 +75,7 @@ class image_t
         std::uint32_t height;
         VkImage image;
         VkImageView view;
+        std::vector<VkImageView> secondary_views;
         VkSampler sampler = VK_NULL_HANDLE;
         VkDeviceMemory memory;
         VkImageLayout layout;
@@ -65,7 +83,7 @@ class image_t
 
         std::int32_t init_texture(const std::string& path, const image_settings_t& settings, const logical_device_t* device, bool flip = false);
         std::int32_t init_depth_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device);
-        std::int32_t init_color_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device);
+        std::int32_t init_color_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device, std::optional<image_view_settings_t> view_settings = std::nullopt);
         std::int32_t create_image_sampler(const sampler_settings_t& settings);
         std::int32_t transition_image_layout(VkImageLayout layout);
         image_t(const VkPhysicalDevice* physical_device, const VkCommandPool* command_pool);
@@ -74,4 +92,4 @@ class image_t
 
 std::optional<VkFormat> find_supported_format(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags featrues, const VkPhysicalDevice* physical_device);
 std::optional<VkFormat> find_depth_format(const VkPhysicalDevice* physical_device);
-std::int32_t create_image_view(VkImageView& view, VkImage image, VkFormat format, VkDevice device, VkImageAspectFlags aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT, std::uint32_t mip_levels = 1);
+std::int32_t create_image_view(image_view_settings_t& settings);

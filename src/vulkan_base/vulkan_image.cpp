@@ -9,20 +9,21 @@ bool has_stencil_component(VkFormat format)
     return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
-std::int32_t create_image_view(VkImageView &view, VkImage image, VkFormat format, VkDevice device, VkImageAspectFlags aspect_mask, std::uint32_t mip_levels)
+std::int32_t create_image_view(image_view_settings_t& settings)
 {
     VkImageViewCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    create_info.image = image;
-    create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    create_info.format = format;
-    create_info.subresourceRange.aspectMask = aspect_mask;
-    create_info.subresourceRange.baseMipLevel = 0;
-    create_info.subresourceRange.levelCount = mip_levels;
-    create_info.subresourceRange.baseArrayLayer = 0;
-    create_info.subresourceRange.layerCount = 1;
+    create_info.image = settings.image;
+    create_info.viewType = settings.type;
+    create_info.format = settings.format;
+    create_info.components = settings.components;
+    create_info.subresourceRange.aspectMask = settings.aspect_mask;
+    create_info.subresourceRange.baseMipLevel = settings.base_mip_level;
+    create_info.subresourceRange.levelCount = settings.mip_levels;
+    create_info.subresourceRange.baseArrayLayer = settings.base_array_layer;
+    create_info.subresourceRange.layerCount = settings.layer_count;
 
-    if (vkCreateImageView(device, &create_info, nullptr, &view) != VK_SUCCESS)
+    if (vkCreateImageView(settings.device, &create_info, nullptr, settings.view) != VK_SUCCESS)
     {
         std::cerr << "Failed to create image view!" << std::endl;
         return -1;
@@ -40,13 +41,14 @@ std::int32_t image_t::create_image(std::uint32_t width, std::uint32_t height, Vk
     create_info.extent.height = height;
     create_info.extent.depth = 1;
     create_info.mipLevels = this->settings.mip_levels;
-    create_info.arrayLayers = 1;
+    create_info.arrayLayers = this->settings.layer_count;
     create_info.format = this->settings.format;
     create_info.tiling = this->settings.tiling;
     create_info.initialLayout = this->settings.layout;
     create_info.usage = this->settings.usage;
     create_info.samples = this->settings.sample_count;
     create_info.sharingMode = this->settings.sharing_mode;
+    create_info.flags = this->settings.flags;
 
     if (vkCreateImage(this->device->device, &create_info, this->allocator, &image) != VK_SUCCESS)
     {
@@ -122,7 +124,7 @@ std::int32_t image_t::transition_image_layout(VkImageLayout layout)
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = this->settings.mip_levels;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
+    barrier.subresourceRange.layerCount = this->settings.layer_count;
 
     VkPipelineStageFlags src_stage, dst_stage;
 
@@ -383,7 +385,13 @@ std::int32_t image_t::init_texture(const std::string& path, const image_settings
     copy_buffer_to_image(staging_buffer.buffer);
     generate_mipmaps();
 
-    create_image_view(this->view, this->image, settings.format, device->device, VK_IMAGE_ASPECT_COLOR_BIT, this->settings.mip_levels);
+    image_view_settings_t image_view_settings = {
+        .view = &this->view,
+        .image = this->image,
+        .format = this->format,
+        .device = this->device->device,
+    };
+    create_image_view(image_view_settings);
     sampler_settings_t sampler_settings;
     sampler_settings.lod.max = static_cast<float>(this->settings.mip_levels);
     create_image_sampler(sampler_settings);
@@ -416,13 +424,20 @@ std::int32_t image_t::init_depth_buffer(image_settings_t settings, const VkExten
     this->layout = settings.layout;
     this->sampler = VK_NULL_HANDLE;
 
-    create_image_view(this->view, this->image, settings.format, device->device, VK_IMAGE_ASPECT_DEPTH_BIT);
+    image_view_settings_t image_view_settings = {
+        .view = &this->view,
+        .image = this->image,
+        .format = settings.format,
+        .device = device->device,
+        .aspect_mask = VK_IMAGE_ASPECT_DEPTH_BIT
+    };
+    create_image_view(image_view_settings);
     transition_image_layout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
     return 0;
 }
 
-std::int32_t image_t::init_color_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device)
+std::int32_t image_t::init_color_buffer(image_settings_t settings, const VkExtent2D& extent, const logical_device_t* device, std::optional<image_view_settings_t> view_settings)
 {
     this->settings = settings;
     this->device = device;
@@ -438,7 +453,35 @@ std::int32_t image_t::init_color_buffer(image_settings_t settings, const VkExten
     this->layout = settings.layout;
     this->sampler = VK_NULL_HANDLE;
 
-    create_image_view(this->view, this->image, settings.format, device->device, VK_IMAGE_ASPECT_COLOR_BIT);
+    image_view_settings_t image_view_settings;
+    if (view_settings.has_value())
+    {
+        image_view_settings = view_settings.value();
+    }
+    else
+    {
+        image_view_settings = {
+            .format = settings.format,
+            .mip_levels = settings.mip_levels,
+            .layer_count = settings.layer_count
+        };
+    }
+    image_view_settings.view = &this->view;
+    image_view_settings.image = this->image;
+    image_view_settings.device = device->device;
+    create_image_view(image_view_settings);
+    if (image_view_settings.layer_count == 1) return 0;
+
+    image_view_settings.type = VK_IMAGE_VIEW_TYPE_2D;
+    image_view_settings.layer_count = 1;
+    image_view_settings.image = this->image;
+    for (std::uint32_t i = 0; i < view_settings->layer_count; ++i)
+    {
+        image_view_settings.base_array_layer = i;
+        this->secondary_views.push_back(nullptr);
+        image_view_settings.view = &this->secondary_views[i];
+        create_image_view(image_view_settings);
+    }
 
     return 0;
 }
@@ -459,6 +502,11 @@ image_t::~image_t()
     }
     vkDestroyImageView(this->device->device, this->view, nullptr);
     std::cout << "Destroying Image View!" << std::endl;
+    for (VkImageView view : this->secondary_views)
+    {
+        vkDestroyImageView(this->device->device, view, nullptr);
+    }
+    std::cout << "Destroying secondary image view(s)!" << std::endl;
     vkDestroyImage(this->device->device, this->image, this->allocator);
     std::cout << "Destroying Image!" << std::endl;
     vkFreeMemory(this->device->device, this->memory, nullptr);
