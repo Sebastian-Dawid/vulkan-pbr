@@ -449,7 +449,7 @@ void vulkan_context_t::bind_descriptor_sets(VkCommandBuffer command_buffer, std:
             &this->descriptor_pools[pool_index]->sets[this->current_frame], 0, nullptr);
 }
 
-std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vulkan_context_t*)> func)
+std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, std::uint32_t, vulkan_context_t*)> func)
 {
     vkWaitForFences(this->device->device, 1, &this->sync_objects.in_flight[this->current_frame], VK_TRUE, UINT64_MAX);
 
@@ -476,12 +476,9 @@ std::int32_t vulkan_context_t::draw_frame(std::function<void(VkCommandBuffer, vu
 
     std::vector<VkCommandBuffer> command_buffers;
     
-    recording_settings_t settings{};
-    settings.populate_defaults(this->render_passes[0]->render_pass, this->render_passes[0]->framebuffers[image_index].framebuffer,
-            this->swap_chain->extent, G_CLEAR_COLORS);
-    settings.draw_command = [&] (VkCommandBuffer command_buffer) { func(command_buffer, this); };
+    std::function<void(VkCommandBuffer)> draw_command = [&] (VkCommandBuffer command_buffer) { func(command_buffer, image_index, this); };
 
-    if (this->command_buffers->record(this->current_frame, settings) != 0)
+    if (this->command_buffers->record(this->current_frame, draw_command) != 0)
     {
         return -1;
     }

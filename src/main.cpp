@@ -548,8 +548,11 @@ int main(int argc, char** argv)
 
     VkDescriptorPool imgui_pool = imgui_setup(4, &vk_context);
     ImDrawData* draw_data;
-    std::function<void(VkCommandBuffer, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, vulkan_context_t* context)
+    std::function<void(VkCommandBuffer, std::uint32_t, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, std::uint32_t image_index, vulkan_context_t* context)
     {
+        VkRenderPassBeginInfo begin_info = populate_render_pass_begin_info(context->render_passes[0]->render_pass, context->render_passes[0]->framebuffers[image_index].framebuffer,
+                context->get_swap_chain_extent(), G_CLEAR_COLORS);
+        vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
         {
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->graphics_pipelines[0]->pipeline);
             context->current_pipeline = context->graphics_pipelines[0];
@@ -662,6 +665,7 @@ int main(int argc, char** argv)
 
         vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
         ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer);
+        vkCmdEndRenderPass(command_buffer);
     };
 
     vk_context.main_loop([&]

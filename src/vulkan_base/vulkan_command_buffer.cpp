@@ -3,15 +3,17 @@
 
 #include <iostream>
 
-void recording_settings_t::populate_defaults(VkRenderPass render_pass, VkFramebuffer framebuffer, VkExtent2D extent, const std::vector<VkClearValue>& clear_colors)
+VkRenderPassBeginInfo populate_render_pass_begin_info(VkRenderPass render_pass, VkFramebuffer framebuffer, VkExtent2D extent, const std::vector<VkClearValue>& clear_colors)
 {
-    this->render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    this->render_pass_info.renderPass = render_pass;
-    this->render_pass_info.framebuffer = framebuffer;
-    this->render_pass_info.renderArea.extent = extent;
-    this->render_pass_info.renderArea.offset = { 0, 0 };
-    this->render_pass_info.clearValueCount = static_cast<std::uint32_t>(clear_colors.size());
-    this->render_pass_info.pClearValues = clear_colors.data();
+    VkRenderPassBeginInfo render_pass_info{};
+    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    render_pass_info.renderPass = render_pass;
+    render_pass_info.framebuffer = framebuffer;
+    render_pass_info.renderArea.extent = extent;
+    render_pass_info.renderArea.offset = { 0, 0 };
+    render_pass_info.clearValueCount = static_cast<std::uint32_t>(clear_colors.size());
+    render_pass_info.pClearValues = clear_colors.data();
+    return render_pass_info;
 }
 
 std::int32_t command_buffers_t::init(const VkCommandPool& command_pool, const VkDevice* device, const std::uint32_t nr_buffers)
@@ -33,7 +35,7 @@ std::int32_t command_buffers_t::init(const VkCommandPool& command_pool, const Vk
     return 0;
 }
 
-std::int32_t command_buffers_t::record(std::uint32_t buffer, const recording_settings_t& settings)
+std::int32_t command_buffers_t::record(std::uint32_t buffer, std::function<void(VkCommandBuffer)> func)
 {
     VkCommandBufferBeginInfo begin_info{};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -43,9 +45,7 @@ std::int32_t command_buffers_t::record(std::uint32_t buffer, const recording_set
         return -1;
     }
 
-    vkCmdBeginRenderPass(this->command_buffers[buffer], &settings.render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-    settings.draw_command(this->command_buffers[buffer]);
-    vkCmdEndRenderPass(this->command_buffers[buffer]);
+    func(this->command_buffers[buffer]);
 
     if (vkEndCommandBuffer(this->command_buffers[buffer]) != VK_SUCCESS)
     {
