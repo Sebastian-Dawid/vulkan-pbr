@@ -17,6 +17,14 @@ struct ubo_t
     alignas(16) glm::mat4 projection;
 };
 
+struct shadow_map_t
+{
+    alignas(16) glm::mat4 model;
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 projection;
+    alignas(16) glm::vec3 light_pos;
+};
+
 struct view_t
 {
     alignas(16) glm::vec3 pos;
@@ -240,29 +248,11 @@ int main(int argc, char** argv)
     buffer_t* index_buffer = vk_context.get_last_buffer();
     index_buffer->set_staged_data(indices.data());
 
-    
-    image_settings_t shadow_map_settings;
-    shadow_map_settings.format = VK_FORMAT_R32_SFLOAT;
-    shadow_map_settings.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-    shadow_map_settings.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    shadow_map_settings.layer_count = 6;
-    image_view_settings_t shadow_map_view_settings = {
-        .type = VK_IMAGE_VIEW_TYPE_CUBE,
-        .format = VK_FORMAT_R32_SFLOAT,
-        .layer_count = 6,
-        .components = { VK_COMPONENT_SWIZZLE_R }
-    };
-    image_t* shadow_map = new image_t(&vk_context.physical_device, &vk_context.command_pool);
-    shadow_map->init_color_buffer(shadow_map_settings, { 1024, 1024 }, vk_context.device, shadow_map_view_settings);
-    shadow_map->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    sampler_settings_t shadow_sampler_settings;
-    shadow_map->create_image_sampler(shadow_sampler_settings);
-    
-
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> g_descriptor_config;
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> descriptor_config;
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> forward_descriptor_config;
     std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> hdr_descriptor_config;
+    std::vector<std::tuple<std::uint32_t, VkDeviceSize, void*, VkDescriptorType, bool>> shadow_map_descriptor_config;
 
     std::vector<buffer_t*> ubo_buffers;
     for (std::uint32_t i = 0; i < 2 * MAX_FRAMES_IN_FLIGHT; ++i)
@@ -298,10 +288,22 @@ int main(int argc, char** argv)
         ubo_buffer->map_memory();
         ubo_buffers.push_back(ubo_buffer);
     }
+    for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+         buffer_settings_t ubo_settings;
+         ubo_settings.size = sizeof(shadow_map_t);
+         ubo_settings.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+         ubo_settings.memory_properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+         if (vk_context.add_buffer(ubo_settings) != 0) return -1;
+         buffer_t* ubo_buffer = vk_context.get_last_buffer();
+         ubo_buffer->map_memory();
+         ubo_buffers.push_back(ubo_buffer);
+    }
     g_descriptor_config.push_back(std::make_tuple(0, sizeof(ubo_t), &ubo_buffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
     g_descriptor_config.push_back(std::make_tuple(7, sizeof(flags_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT * 2], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
     descriptor_config.push_back(std::make_tuple(5, sizeof(view_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT * 3], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
     forward_descriptor_config.push_back(std::make_tuple(0, sizeof(ubo_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
+    shadow_map_descriptor_config.push_back(std::make_tuple(0, sizeof(shadow_map_t), &ubo_buffers[MAX_FRAMES_IN_FLIGHT * 4], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, true));
 
     image_settings_t image_settings;
     image_settings.format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -360,7 +362,43 @@ int main(int argc, char** argv)
 
     std::vector<VkDescriptorSetLayoutBinding> forward_bindings = { UBO_LAYOUT_BINDING };
     std::vector<VkDescriptorSetLayoutBinding> hdr_bindings = { {0, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr} };
+    std::vector<VkDescriptorSetLayoutBinding> shadow_map_bindings = { UBO_LAYOUT_BINDING };
 
+    /* SHADOW MAP RENDER PASS AND PIPELINE */
+    image_settings_t shadow_map_settings;
+    shadow_map_settings.format = VK_FORMAT_R32_SFLOAT;
+    shadow_map_settings.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    shadow_map_settings.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    shadow_map_settings.layer_count = 6;
+    image_view_settings_t shadow_map_view_settings = {
+        .type = VK_IMAGE_VIEW_TYPE_CUBE,
+        .format = VK_FORMAT_R32_SFLOAT,
+        .layer_count = 6,
+        .components = { VK_COMPONENT_SWIZZLE_R }
+    };
+    image_t* shadow_map = new image_t(&vk_context.physical_device, &vk_context.command_pool);
+    shadow_map->init_color_buffer(shadow_map_settings, { 1024, 1024 }, vk_context.device, shadow_map_view_settings);
+    shadow_map->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    sampler_settings_t shadow_sampler_settings;
+    shadow_map->create_image_sampler(shadow_sampler_settings);
+
+    render_pass_settings_t shadow_map_pass_settings;
+    shadow_map_pass_settings.add_subpass(VK_FORMAT_R32_SFLOAT, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device);
+
+    render_pass_t* shadow_map_pass = new render_pass_t();
+    shadow_map_pass->init(shadow_map_pass_settings, vk_context.device->device);
+    std::vector<framebuffer_attachment_t> shadow_map_attachments = { {&shadow_map, IMAGE} };
+    shadow_map_pass->add_framebuffer(1024, 1024, shadow_map_attachments);
+    shadow_map_pass->resizeable = false;
+    vk_context.render_passes.push_back(shadow_map_pass);
+
+    vk_context.add_descriptor_set_layout(shadow_map_bindings);
+    pipeline_shaders_t shadow_map_shaders = { "./build/target/shaders/shadow_map.vert.spv", std::nullopt, "./build/target/shaders/shadow_map.frag.spv" };
+    pipeline_settings_t shadow_map_pipeline_settings;
+    shadow_map_pipeline_settings.populate_defaults(vk_context.get_descriptor_set_layouts(), vk_context.render_passes[0]);
+    if (vk_context.add_pipeline(shadow_map_shaders, shadow_map_pipeline_settings) != 0) return -1;
+
+    /* DEFFERED PBR RENDER PASS AND PIPELINES */
     std::vector<image_t*> g_buffer;
     image_settings_t g_buffer_settings;
     g_buffer_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
@@ -515,47 +553,78 @@ int main(int argc, char** argv)
     vk_context.add_descriptor_set_layout(g_bindings);
     pipeline_shaders_t g_shaders = { "./build/target/shaders/g_buffer.vert.spv", std::nullopt, "./build/target/shaders/g_buffer.frag.spv" };
     pipeline_settings_t g_pipeline_settings;
-    g_pipeline_settings.populate_defaults(vk_context.get_descriptor_set_layouts(), vk_context.render_passes[0], 4);
+    g_pipeline_settings.populate_defaults({ vk_context.get_descriptor_set_layouts()[1] }, vk_context.render_passes[1], 4);
     //g_pipeline_settings.multisampling.rasterizationSamples = vk_context.msaa_samples;
     if (vk_context.add_pipeline(g_shaders, g_pipeline_settings) != 0) return -1;
     
     vk_context.add_descriptor_set_layout(out_bindings);
     pipeline_shaders_t shaders = { "./build/target/shaders/main.vert.spv", std::nullopt, "./build/target/shaders/main.frag.spv" };
     pipeline_settings_t pipeline_settings;
-    pipeline_settings.populate_defaults({ vk_context.get_descriptor_set_layouts()[1] }, vk_context.render_passes[0]);
+    pipeline_settings.populate_defaults({ vk_context.get_descriptor_set_layouts()[2] }, vk_context.render_passes[1]);
     pipeline_settings.subpass = 1;
     if (vk_context.add_pipeline(shaders, pipeline_settings) != 0) return -1;
 
     vk_context.add_descriptor_set_layout(forward_bindings);
     pipeline_shaders_t forward_shaders = { "./build/target/shaders/forward.vert.spv", std::nullopt, "./build/target/shaders/forward.frag.spv" };
     pipeline_settings_t forward_pipeline_settings;
-    forward_pipeline_settings.populate_defaults({ vk_context.get_descriptor_set_layouts()[2] }, vk_context.render_passes[0]);
+    forward_pipeline_settings.populate_defaults({ vk_context.get_descriptor_set_layouts()[3] }, vk_context.render_passes[1]);
     forward_pipeline_settings.subpass = 2;
     if (vk_context.add_pipeline(forward_shaders, forward_pipeline_settings) != 0) return -1;
 
     vk_context.add_descriptor_set_layout(hdr_bindings);
     pipeline_shaders_t hdr_shaders = { "./build/target/shaders/hdr.vert.spv", std::nullopt, "./build/target/shaders/hdr.frag.spv" };
     pipeline_settings_t hdr_pipeline_settings;
-    hdr_pipeline_settings.populate_defaults({ vk_context.get_descriptor_set_layouts()[3] }, vk_context.render_passes[0]);
+    hdr_pipeline_settings.populate_defaults({ vk_context.get_descriptor_set_layouts()[4] }, vk_context.render_passes[1]);
     hdr_pipeline_settings.subpass = 3;
     if (vk_context.add_pipeline(hdr_shaders, hdr_pipeline_settings) != 0) return -1;
 
     std::vector<descriptor_pool_t*> pools = *vk_context.get_descriptor_pools();
-    pools[0]->configure_descriptors(g_descriptor_config);
-    pools[1]->configure_descriptors(descriptor_config);
-    pools[2]->configure_descriptors(forward_descriptor_config);
-    pools[3]->configure_descriptors(hdr_descriptor_config);
+    pools[0]->configure_descriptors(shadow_map_descriptor_config);
+    pools[1]->configure_descriptors(g_descriptor_config);
+    pools[2]->configure_descriptors(descriptor_config);
+    pools[3]->configure_descriptors(forward_descriptor_config);
+    pools[4]->configure_descriptors(hdr_descriptor_config);
 
     VkDescriptorPool imgui_pool = imgui_setup(4, &vk_context);
     ImDrawData* draw_data;
     std::function<void(VkCommandBuffer, std::uint32_t, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, std::uint32_t image_index, vulkan_context_t* context)
     {
-        VkRenderPassBeginInfo begin_info = populate_render_pass_begin_info(context->render_passes[0]->render_pass, context->render_passes[0]->framebuffers[image_index].framebuffer,
-                context->get_swap_chain_extent(), G_CLEAR_COLORS);
+        VkRenderPassBeginInfo begin_info = populate_render_pass_begin_info(context->render_passes[0]->render_pass, context->render_passes[0]->framebuffers[0].framebuffer,
+                {1024, 1024}, G_CLEAR_COLORS);
         vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
         {
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->graphics_pipelines[0]->pipeline);
             context->current_pipeline = context->graphics_pipelines[0];
+            VkViewport viewport{};
+            viewport.x = 0.0f;
+            viewport.y = 0.0f;
+            viewport.width = static_cast<float>(1024);
+            viewport.height = static_cast<float>(1024);
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
+            vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+            VkRect2D scissor{};
+            scissor.offset = { 0, 0 };
+            scissor.extent = { 1024, 1024 };
+            vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+            VkBuffer vertex_buffers[] = { g_vertex_buffer->buffer };
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+            vkCmdBindIndexBuffer(command_buffer, g_index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
+            context->bind_descriptor_sets(command_buffer, 1, 0);
+
+            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(model.indices.size()), 1, 0, 0, 0);
+        }
+        vkCmdEndRenderPass(command_buffer);
+
+        begin_info = populate_render_pass_begin_info(context->render_passes[1]->render_pass, context->render_passes[1]->framebuffers[image_index].framebuffer,
+                context->get_swap_chain_extent(), G_CLEAR_COLORS);
+        vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+        {
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->graphics_pipelines[1]->pipeline);
+            context->current_pipeline = context->graphics_pipelines[1];
             VkViewport viewport{};
             viewport.x = 0.0f;
             viewport.y = 0.0f;
@@ -574,37 +643,9 @@ int main(int argc, char** argv)
             VkDeviceSize offsets[] = { 0 };
             vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
             vkCmdBindIndexBuffer(command_buffer, g_index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
-            context->bind_descriptor_sets(command_buffer, 0, 0);
-
-            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(model.indices.size()), 1, 0, 0, 0);
-        }
-
-        vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
-
-        {
-            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->graphics_pipelines[1]->pipeline);
-            context->current_pipeline = context->graphics_pipelines[1];
-            VkViewport viewport{};
-            viewport.x = 0.0f;
-            viewport.y = 0.0f;
-            viewport.width = static_cast<float>(context->get_swap_chain_extent().width);
-            viewport.height = static_cast<float>(context->get_swap_chain_extent().height);
-            viewport.minDepth = 0.0f;
-            viewport.maxDepth = 1.0f;
-            vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-
-            VkRect2D scissor{};
-            scissor.offset = { 0, 0 };
-            scissor.extent = context->get_swap_chain_extent();
-            vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-
-            VkBuffer vertex_buffers[] = { vertex_buffer->buffer };
-            VkDeviceSize offsets[] = { 0 };
-            vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
-            vkCmdBindIndexBuffer(command_buffer, index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
             context->bind_descriptor_sets(command_buffer, 1, 0);
 
-            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
+            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(model.indices.size()), 1, 0, 0, 0);
         }
 
         vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
@@ -626,13 +667,13 @@ int main(int argc, char** argv)
             scissor.extent = context->get_swap_chain_extent();
             vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-            VkBuffer vertex_buffers[] = { forward_vertex_buffer->buffer };
+            VkBuffer vertex_buffers[] = { vertex_buffer->buffer };
             VkDeviceSize offsets[] = { 0 };
             vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
-            vkCmdBindIndexBuffer(command_buffer, forward_index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdBindIndexBuffer(command_buffer, index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
             context->bind_descriptor_sets(command_buffer, 2, 0);
-            
-            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(cube.indices.size()), 1, 0, 0, 0);
+
+            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
         }
 
         vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
@@ -654,11 +695,39 @@ int main(int argc, char** argv)
             scissor.extent = context->get_swap_chain_extent();
             vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
+            VkBuffer vertex_buffers[] = { forward_vertex_buffer->buffer };
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+            vkCmdBindIndexBuffer(command_buffer, forward_index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
+            context->bind_descriptor_sets(command_buffer, 3, 0);
+            
+            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(cube.indices.size()), 1, 0, 0, 0);
+        }
+
+        vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
+
+        {
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->graphics_pipelines[4]->pipeline);
+            context->current_pipeline = context->graphics_pipelines[4];
+            VkViewport viewport{};
+            viewport.x = 0.0f;
+            viewport.y = 0.0f;
+            viewport.width = static_cast<float>(context->get_swap_chain_extent().width);
+            viewport.height = static_cast<float>(context->get_swap_chain_extent().height);
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
+            vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+            VkRect2D scissor{};
+            scissor.offset = { 0, 0 };
+            scissor.extent = context->get_swap_chain_extent();
+            vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
             VkBuffer vertex_buffers[] = { vertex_buffer->buffer };
             VkDeviceSize offsets[] = { 0 };
             vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
             vkCmdBindIndexBuffer(command_buffer, index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
-            context->bind_descriptor_sets(command_buffer, 3, 0);
+            context->bind_descriptor_sets(command_buffer, 4, 0);
 
             vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
         }
@@ -708,6 +777,13 @@ int main(int argc, char** argv)
             view.pos = cam.position;
             view.mat = ubo.view;
             std::memcpy(ubo_buffers[3 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &view, sizeof(view_t));
+            static shadow_map_t shadow_map_ubo;
+            shadow_map_ubo.model = ubo.model;
+            shadow_map_ubo.view = glm::lookAt(blinn_phong.light_pos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            shadow_map_ubo.projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 100.0f);
+            shadow_map_ubo.projection[1][1] *= -1;
+            shadow_map_ubo.light_pos = blinn_phong.light_pos;
+            std::memcpy(ubo_buffers[4 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &shadow_map_ubo, sizeof(shadow_map_t));
 
             ImGui_ImplVulkan_NewFrame();
             ImGui_ImplGlfw_NewFrame();
