@@ -1,5 +1,10 @@
 # vulkan-template
-To initialize the git submodules use: ```git submodule update --init```
+To initialize the git submodules use:
+```bash
+git submodule update --init # to initialize the includes
+cd includes
+git submodule update --init # to initialize imgui
+```
 
 To compile the programm in debug mode use: ```make build_debug```
 
