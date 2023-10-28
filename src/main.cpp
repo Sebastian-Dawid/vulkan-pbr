@@ -381,14 +381,27 @@ int main(int argc, char** argv)
     shadow_map->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     sampler_settings_t shadow_sampler_settings;
     shadow_map->create_image_sampler(shadow_sampler_settings);
+    
+    image_settings_t shadow_depth_settings;
+    shadow_depth_settings.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    shadow_depth_settings.sample_count = VK_SAMPLE_COUNT_1_BIT;
+    image_t* shadow_buffer = new image_t(&vk_context.physical_device, &vk_context.command_pool);
+    shadow_buffer->init_depth_buffer(shadow_depth_settings, { 1024, 1024 }, vk_context.device);
 
     render_pass_settings_t shadow_map_pass_settings;
-    shadow_map_pass_settings.add_subpass(VK_FORMAT_R32_SFLOAT, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device);
+    shadow_map_pass_settings.add_subpass(VK_FORMAT_R32_SFLOAT, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 1);
 
     render_pass_t* shadow_map_pass = new render_pass_t();
     shadow_map_pass->init(shadow_map_pass_settings, vk_context.device->device);
-    std::vector<framebuffer_attachment_t> shadow_map_attachments = { {&shadow_map, IMAGE} };
-    shadow_map_pass->add_framebuffer(1024, 1024, shadow_map_attachments);
+    std::vector<image_t*> shadow_map_views;
+    for (std::uint32_t i = 0; i < 6; ++i)
+    {
+        image_t* img = (image_t*)malloc(sizeof(image_t));
+        shadow_map_views.push_back(img);
+        img->view = shadow_map->secondary_views[i];
+        std::vector<framebuffer_attachment_t> shadow_map_attachments = { {&img, IMAGE}, {&shadow_buffer, IMAGE} };
+        shadow_map_pass->add_framebuffer(1024, 1024, shadow_map_attachments);
+    }
     shadow_map_pass->resizeable = false;
     vk_context.render_passes.push_back(shadow_map_pass);
 
@@ -396,6 +409,7 @@ int main(int argc, char** argv)
     pipeline_shaders_t shadow_map_shaders = { "./build/target/shaders/shadow_map.vert.spv", std::nullopt, "./build/target/shaders/shadow_map.frag.spv" };
     pipeline_settings_t shadow_map_pipeline_settings;
     shadow_map_pipeline_settings.populate_defaults(vk_context.get_descriptor_set_layouts(), vk_context.render_passes[0]);
+    shadow_map_pipeline_settings.push_constant_ranges.push_back({ .stageFlags = VK_SHADER_STAGE_VERTEX_BIT, .offset = 0, .size = sizeof(glm::mat4) });
     if (vk_context.add_pipeline(shadow_map_shaders, shadow_map_pipeline_settings) != 0) return -1;
 
     /* DEFFERED PBR RENDER PASS AND PIPELINES */
@@ -545,7 +559,7 @@ int main(int argc, char** argv)
     {
         std::vector<framebuffer_attachment_t> attachments = { {&vk_context.color_buffers[0], IMAGE}, {&vk_context.color_buffers[1], IMAGE},
             {&vk_context.color_buffers[2], IMAGE}, {&vk_context.color_buffers[3]}, {&vk_context.depth_buffers[0], IMAGE},
-            {&vk_context.color_buffers[4]}, {&vk_context.swap_chain, SWAP_CHAIN, i} };
+            {&vk_context.color_buffers[4], IMAGE}, {&vk_context.swap_chain, SWAP_CHAIN, i} };
         render_pass->add_framebuffer(vk_context.swap_chain->extent.width, vk_context.swap_chain->extent.height, attachments);
     }
     vk_context.render_passes.push_back(render_pass);
@@ -589,35 +603,71 @@ int main(int argc, char** argv)
     ImDrawData* draw_data;
     std::function<void(VkCommandBuffer, std::uint32_t, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, std::uint32_t image_index, vulkan_context_t* context)
     {
-        VkRenderPassBeginInfo begin_info = populate_render_pass_begin_info(context->render_passes[0]->render_pass, context->render_passes[0]->framebuffers[0].framebuffer,
-                {1024, 1024}, G_CLEAR_COLORS);
-        vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+        VkRenderPassBeginInfo begin_info;
+        for (std::uint32_t i = 0; i < 6; ++i)
         {
-            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->graphics_pipelines[0]->pipeline);
-            context->current_pipeline = context->graphics_pipelines[0];
-            VkViewport viewport{};
-            viewport.x = 0.0f;
-            viewport.y = 0.0f;
-            viewport.width = static_cast<float>(1024);
-            viewport.height = static_cast<float>(1024);
-            viewport.minDepth = 0.0f;
-            viewport.maxDepth = 1.0f;
-            vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+            glm::mat4 view_mat = glm::mat4(1.0f);
+            switch (i)
+            {
+                case 0: // POSITIVE_X
+                    view_mat = glm::rotate(view_mat, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    view_mat = glm::rotate(view_mat, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                    break;
+                case 1:	// NEGATIVE_X
+                    view_mat = glm::rotate(view_mat, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    view_mat = glm::rotate(view_mat, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                    break;
+                case 2:	// POSITIVE_Y
+                    view_mat = glm::rotate(view_mat, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                    break;
+                case 3:	// NEGATIVE_Y
+                    view_mat = glm::rotate(view_mat, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                    break;
+                case 4:	// POSITIVE_Z
+                    view_mat = glm::rotate(view_mat, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                    break;
+                case 5:	// NEGATIVE_Z
+                    view_mat = glm::rotate(view_mat, glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+                    break;
+            }
 
-            VkRect2D scissor{};
-            scissor.offset = { 0, 0 };
-            scissor.extent = { 1024, 1024 };
-            vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+            begin_info = populate_render_pass_begin_info(context->render_passes[0]->render_pass, context->render_passes[0]->framebuffers[i].framebuffer,
+                    {1024, 1024}, CLEAR_COLORS);
+            vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+            {
 
-            VkBuffer vertex_buffers[] = { g_vertex_buffer->buffer };
-            VkDeviceSize offsets[] = { 0 };
-            vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
-            vkCmdBindIndexBuffer(command_buffer, g_index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
-            context->bind_descriptor_sets(command_buffer, 1, 0);
+                vkCmdPushConstants(command_buffer,
+                        context->graphics_pipelines[0]->pipeline_layout,
+                        VK_SHADER_STAGE_VERTEX_BIT,
+                        0, sizeof(glm::mat4),
+                        &view_mat);
 
-            vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(model.indices.size()), 1, 0, 0, 0);
+                vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->graphics_pipelines[0]->pipeline);
+                context->current_pipeline = context->graphics_pipelines[0];
+                VkViewport viewport{};
+                viewport.x = 0.0f;
+                viewport.y = 0.0f;
+                viewport.width = static_cast<float>(1024);
+                viewport.height = static_cast<float>(1024);
+                viewport.minDepth = 0.0f;
+                viewport.maxDepth = 1.0f;
+                vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+                VkRect2D scissor{};
+                scissor.offset = { 0, 0 };
+                scissor.extent = { 1024, 1024 };
+                vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+                VkBuffer vertex_buffers[] = { g_vertex_buffer->buffer };
+                VkDeviceSize offsets[] = { 0 };
+                vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+                vkCmdBindIndexBuffer(command_buffer, g_index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
+                context->bind_descriptor_sets(command_buffer, 1, 0);
+
+                vkCmdDrawIndexed(command_buffer, static_cast<std::uint32_t>(model.indices.size()), 1, 0, 0, 0);
+            }
+            vkCmdEndRenderPass(command_buffer);
         }
-        vkCmdEndRenderPass(command_buffer);
 
         begin_info = populate_render_pass_begin_info(context->render_passes[1]->render_pass, context->render_passes[1]->framebuffers[image_index].framebuffer,
                 context->get_swap_chain_extent(), G_CLEAR_COLORS);
@@ -780,7 +830,7 @@ int main(int argc, char** argv)
             static shadow_map_t shadow_map_ubo;
             shadow_map_ubo.model = ubo.model;
             shadow_map_ubo.view = glm::lookAt(blinn_phong.light_pos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-            shadow_map_ubo.projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 100.0f);
+            shadow_map_ubo.projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 1.0f);
             shadow_map_ubo.projection[1][1] *= -1;
             shadow_map_ubo.light_pos = blinn_phong.light_pos;
             std::memcpy(ubo_buffers[4 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &shadow_map_ubo, sizeof(shadow_map_t));
@@ -813,6 +863,8 @@ int main(int argc, char** argv)
         }
     });
 
+    for (image_t* img : shadow_map_views) free(img);
+    delete shadow_buffer;
     delete shadow_map;
     vkDestroyDescriptorPool(vk_context.device->device, imgui_pool, nullptr);
     ImGui_ImplVulkan_Shutdown();

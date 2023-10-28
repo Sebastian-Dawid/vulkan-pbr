@@ -151,6 +151,8 @@ std::int32_t graphics_pipeline_t::init(const pipeline_shaders_t& shaders, const 
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipeline_layout_info.setLayoutCount = static_cast<std::uint32_t>(settings.descriptor_set_layouts.size());
     pipeline_layout_info.pSetLayouts = settings.descriptor_set_layouts.data();
+    pipeline_layout_info.pushConstantRangeCount = static_cast<std::uint32_t>(settings.push_constant_ranges.size());
+    pipeline_layout_info.pPushConstantRanges = settings.push_constant_ranges.data();
 
     if (vkCreatePipelineLayout(device->device, &pipeline_layout_info, nullptr, &(this->pipeline_layout)) != VK_SUCCESS)
     {

@@ -35,6 +35,7 @@ struct pipeline_settings_t
     VkPipelineDepthStencilStateCreateInfo depth_stencil{};
     const render_pass_t* render_pass = nullptr;
     std::uint32_t subpass = 0;
+    std::vector<VkPushConstantRange> push_constant_ranges;
 
     void populate_defaults(const std::vector<VkDescriptorSetLayout>& descriptor_set_layputs, render_pass_t* render_pass, std::uint32_t color_attachment_count = 1);
 };

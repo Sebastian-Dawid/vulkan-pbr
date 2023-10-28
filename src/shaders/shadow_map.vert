@@ -13,9 +13,14 @@ layout (binding = 0) uniform ubo_t
     vec3 pos;
 } ubo;
 
+layout (push_constant) uniform push_const_t
+{
+    mat4 view;
+} push_const;
+
 void main()
 {
-    gl_Position = ubo.projection * ubo.view * ubo.model * vec4(pos, 1.0);
+    gl_Position = ubo.projection * push_const.view * ubo.model * vec4(pos, 1.0);
     frag_pos = pos;
     frag_light_pos = ubo.pos;
 }
