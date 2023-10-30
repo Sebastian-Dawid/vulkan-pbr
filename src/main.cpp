@@ -45,6 +45,7 @@ struct blinn_phong_t
 
     alignas(4) float linear;
     alignas(4) float quadratic;
+    alignas(4) float far_plane;
 };
 
 std::vector<vertex_t> vertices = {
@@ -358,7 +359,8 @@ int main(int argc, char** argv)
     VkDescriptorSetLayoutBinding g_pbr_binding = { 3, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
     VkDescriptorSetLayoutBinding phong_layout_binding = { 4, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
     VkDescriptorSetLayoutBinding view_layout_binding = { 5, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
-    std::vector<VkDescriptorSetLayoutBinding> out_bindings = { g_pos_binding, g_normal_binding, g_albedo_binding, g_pbr_binding, phong_layout_binding, view_layout_binding };
+    VkDescriptorSetLayoutBinding cube_map_binding = {6, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr };
+    std::vector<VkDescriptorSetLayoutBinding> out_bindings = { g_pos_binding, g_normal_binding, g_albedo_binding, g_pbr_binding, phong_layout_binding, view_layout_binding, cube_map_binding };
 
     std::vector<VkDescriptorSetLayoutBinding> forward_bindings = { UBO_LAYOUT_BINDING };
     std::vector<VkDescriptorSetLayoutBinding> hdr_bindings = { {0, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr} };
@@ -380,6 +382,7 @@ int main(int argc, char** argv)
     shadow_map->init_color_buffer(shadow_map_settings, { 1024, 1024 }, vk_context.device, shadow_map_view_settings);
     shadow_map->transition_image_layout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     sampler_settings_t shadow_sampler_settings;
+    shadow_sampler_settings.address_mode = { VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER };
     shadow_map->create_image_sampler(shadow_sampler_settings);
     
     image_settings_t shadow_depth_settings;
@@ -390,16 +393,17 @@ int main(int argc, char** argv)
 
     render_pass_settings_t shadow_map_pass_settings;
     shadow_map_pass_settings.add_subpass(VK_FORMAT_R32_SFLOAT, VK_SAMPLE_COUNT_1_BIT, &vk_context.physical_device, 1, 1);
+    shadow_map_pass_settings.attachments[0].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     render_pass_t* shadow_map_pass = new render_pass_t();
     shadow_map_pass->init(shadow_map_pass_settings, vk_context.device->device);
-    std::vector<image_t*> shadow_map_views;
+    std::vector<image_t*> shadow_map_views(6);
     for (std::uint32_t i = 0; i < 6; ++i)
     {
         image_t* img = (image_t*)malloc(sizeof(image_t));
-        shadow_map_views.push_back(img);
+        shadow_map_views[i] = img;
         img->view = shadow_map->secondary_views[i];
-        std::vector<framebuffer_attachment_t> shadow_map_attachments = { {&img, IMAGE}, {&shadow_buffer, IMAGE} };
+        std::vector<framebuffer_attachment_t> shadow_map_attachments = { {&shadow_map_views[i], IMAGE}, {&shadow_buffer, IMAGE} };
         shadow_map_pass->add_framebuffer(1024, 1024, shadow_map_attachments);
     }
     shadow_map_pass->resizeable = false;
@@ -411,6 +415,8 @@ int main(int argc, char** argv)
     shadow_map_pipeline_settings.populate_defaults(vk_context.get_descriptor_set_layouts(), vk_context.render_passes[0]);
     shadow_map_pipeline_settings.push_constant_ranges.push_back({ .stageFlags = VK_SHADER_STAGE_VERTEX_BIT, .offset = 0, .size = sizeof(glm::mat4) });
     if (vk_context.add_pipeline(shadow_map_shaders, shadow_map_pipeline_settings) != 0) return -1;
+    
+    descriptor_config.push_back(std::make_tuple(6, 0, &shadow_map, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false));
 
     /* DEFFERED PBR RENDER PASS AND PIPELINES */
     std::vector<image_t*> g_buffer;
@@ -601,6 +607,7 @@ int main(int argc, char** argv)
 
     VkDescriptorPool imgui_pool = imgui_setup(4, &vk_context);
     ImDrawData* draw_data;
+    static blinn_phong_t blinn_phong = { {0.0f, 0.0f, 1.5f}, {.2f, .2f, .6f}, {.02f, .02f, .06f}, {10.0f, 0.0f, 0.0f}, 0.09f, 0.032f, 100.0f };
     std::function<void(VkCommandBuffer, std::uint32_t, vulkan_context_t*)> draw_command = [&] (VkCommandBuffer command_buffer, std::uint32_t image_index, vulkan_context_t* context)
     {
         VkRenderPassBeginInfo begin_info;
@@ -610,28 +617,26 @@ int main(int argc, char** argv)
             switch (i)
             {
                 case 0: // POSITIVE_X
-                    view_mat = glm::rotate(view_mat, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-                    view_mat = glm::rotate(view_mat, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                    view_mat = glm::lookAt(blinn_phong.light_pos, blinn_phong.light_pos + glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
                     break;
                 case 1:	// NEGATIVE_X
-                    view_mat = glm::rotate(view_mat, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-                    view_mat = glm::rotate(view_mat, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                    view_mat = glm::lookAt(blinn_phong.light_pos, blinn_phong.light_pos + glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
                     break;
                 case 2:	// POSITIVE_Y
-                    view_mat = glm::rotate(view_mat, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                    view_mat = glm::lookAt(blinn_phong.light_pos, blinn_phong.light_pos + glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
                     break;
                 case 3:	// NEGATIVE_Y
-                    view_mat = glm::rotate(view_mat, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                    view_mat = glm::lookAt(blinn_phong.light_pos, blinn_phong.light_pos + glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
                     break;
                 case 4:	// POSITIVE_Z
-                    view_mat = glm::rotate(view_mat, glm::radians(180.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                    view_mat = glm::lookAt(blinn_phong.light_pos, blinn_phong.light_pos + glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f));
                     break;
                 case 5:	// NEGATIVE_Z
-                    view_mat = glm::rotate(view_mat, glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+                    view_mat = glm::lookAt(blinn_phong.light_pos, blinn_phong.light_pos + glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, -1.0f, 0.0f));
                     break;
             }
 
-            begin_info = populate_render_pass_begin_info(context->render_passes[0]->render_pass, context->render_passes[0]->framebuffers[i].framebuffer,
+            VkRenderPassBeginInfo begin_info = populate_render_pass_begin_info(context->render_passes[0]->render_pass, context->render_passes[0]->framebuffers[i].framebuffer,
                     {1024, 1024}, CLEAR_COLORS);
             vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
             {
@@ -807,13 +812,12 @@ int main(int argc, char** argv)
 
             static std::chrono::time_point start_time = std::chrono::high_resolution_clock::now();
             std::chrono::time_point current_time = std::chrono::high_resolution_clock::now();
-            float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-            static blinn_phong_t blinn_phong = { {0.0f, 0.0f, 3.0f}, {.2f, .2f, .6f}, {.02f, .02f, .06f}, {10.0f, 0.0f, 0.0f}, 0.09f, 0.032f };
+            //float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
             static float scale = 0.1;
             blinn_phong.view_pos = cam.position;
             static ubo_t ubo;
-            time = 0.0f;
-            ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            static float time = 0.0f;
+            ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(time), glm::vec3(0.0f, 1.0f, 0.0f));
             ubo.view =  cam.calculate_view_matrix();
             ubo.projection = glm::perspective(glm::radians(cam.fov_angle), vk_context.get_swap_chain_extent().width / (float) vk_context.get_swap_chain_extent().height, 0.1f, 100.0f);
             ubo.projection[1][1] *= -1;
@@ -828,9 +832,9 @@ int main(int argc, char** argv)
             view.mat = ubo.view;
             std::memcpy(ubo_buffers[3 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &view, sizeof(view_t));
             static shadow_map_t shadow_map_ubo;
-            shadow_map_ubo.model = ubo.model;
+            shadow_map_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(time), glm::vec3(0.0f, 1.0f, 0.0f));
             shadow_map_ubo.view = glm::lookAt(blinn_phong.light_pos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-            shadow_map_ubo.projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 1.0f);
+            shadow_map_ubo.projection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, blinn_phong.far_plane);
             shadow_map_ubo.projection[1][1] *= -1;
             shadow_map_ubo.light_pos = blinn_phong.light_pos;
             std::memcpy(ubo_buffers[4 * MAX_FRAMES_IN_FLIGHT + vk_context.get_current_frame()]->mapped_memory, &shadow_map_ubo, sizeof(shadow_map_t));
@@ -846,6 +850,7 @@ int main(int argc, char** argv)
                 ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
                 ImGui::SliderFloat3("light pos", &blinn_phong.light_pos.r, -5.0f, 5.0f);
                 ImGui::SliderFloat("scale", &scale, 0.01f, 0.5f);
+                ImGui::SliderFloat("rotation", &time, 0.0f, 360.0f);
                 ImGui::ColorEdit3("light color", &blinn_phong.light_color.r, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
                 ImGui::ColorEdit3("ambient light color", &blinn_phong.ambient_color.r, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
                 ImGui::End();

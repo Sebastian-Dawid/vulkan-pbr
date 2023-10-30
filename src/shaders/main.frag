@@ -16,6 +16,7 @@ layout (binding = 4) uniform light_t
 
     float linear;
     float quadratic;
+    float far_plane;
 } light;
 
 layout (binding = 5) uniform view_t
@@ -24,11 +25,14 @@ layout (binding = 5) uniform view_t
     mat4 mat;
 } view;
 
+layout (binding = 6) uniform samplerCube shadow_map;
+
 layout (location = 0) out vec4 out_color;
 
 const float PI = 3.14159265359;
 
 vec3 calc_point_light(vec3 pos, vec3 normal, vec3 diffuse, float metallic, float roughness, vec3 F0);
+float point_shadow(vec3 light_pos, vec3 pos, float far_plane);
 
 float distribution_ggx(vec3 n, vec3 h, float roughness);
 float geometry_schlick_ggx(float nv, float roughness);
@@ -41,7 +45,7 @@ void main()
     vec3 normal   = subpassLoad(g_normal).rgb;
     vec3 diffuse  = subpassLoad(g_albedo).rgb;
     vec3 pbr      = subpassLoad(g_pbr).rgb;
-    
+
     vec3 F0 = vec3(0.04);
     F0 = mix(F0, diffuse, pbr.r);
     vec3 Lo = vec3(0.0);
@@ -53,12 +57,23 @@ void main()
     out_color = vec4(Lo, 1.0);
 }
 
+float point_shadow(vec3 pos, float far_plane)
+{
+    float bias = 0.05;
+    vec3 frag_to_light = (pos - light.pos);
+    frag_to_light.y *= -1;
+    float current_depth = length(frag_to_light);
+    float closest_depth = texture(shadow_map, frag_to_light).r;
+    float shadow = (current_depth - bias > closest_depth) ? 1.0 : 0.0;
+    return shadow;
+}
+
 vec3 calc_point_light(vec3 pos, vec3 normal, vec3 albedo, float metallic, float roughness, vec3 F0)
 {
     vec3 v = normalize(view.pos - pos);
     vec3 l = normalize(light.pos - pos);
     vec3 h = normalize(l + v);
-    
+
     float dist = length(light.pos - pos);
     float attenuation = 1.0 / (dist * dist);
 
@@ -77,8 +92,8 @@ vec3 calc_point_light(vec3 pos, vec3 normal, vec3 albedo, float metallic, float 
     kD *= 1.0 - metallic;
 
     float nl = max(dot(normal, l), 0.0);
-
-    return ((kD * albedo / PI + specular) * radiance * nl);
+    float shadow = point_shadow(pos, light.far_plane);
+    return (1.0 - shadow) * ((kD * albedo / PI + specular) * radiance * nl);
 }
 
 float distribution_ggx(vec3 n, vec3 h, float roughness)

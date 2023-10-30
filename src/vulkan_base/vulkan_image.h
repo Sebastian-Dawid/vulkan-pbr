@@ -53,7 +53,7 @@ struct sampler_settings_t
     VkSamplerMipmapMode mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
     struct
     {
-        float bias = 0.0f, min = 0.0f, max = 0.0f;
+        float bias = 0.0f, min = 0.0f, max = 1.0f;
     } lod;
 };
 

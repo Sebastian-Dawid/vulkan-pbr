@@ -21,6 +21,6 @@ layout (push_constant) uniform push_const_t
 void main()
 {
     gl_Position = ubo.projection * push_const.view * ubo.model * vec4(pos, 1.0);
-    frag_pos = pos;
+    frag_pos = (ubo.model * vec4(pos, 1)).xyz;
     frag_light_pos = ubo.pos;
 }
