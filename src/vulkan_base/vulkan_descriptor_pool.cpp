@@ -5,6 +5,8 @@
 #include <iostream>
 #include <tuple>
 
+#include "debug_print.h"
+
 void descriptor_pool_t::reconfigure()
 {
     this->configure_descriptors(this->config);
@@ -116,5 +118,5 @@ descriptor_pool_t::~descriptor_pool_t()
 {
     if (this->device == nullptr) return;
     vkDestroyDescriptorPool(*this->device, this->pool, this->allocator);
-    std::cout << "Destroying Descriptor Pool!" << std::endl;
+    DEBUG_PRINT("Destroying Descriptor Pool!")
 }

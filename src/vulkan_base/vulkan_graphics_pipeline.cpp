@@ -4,6 +4,8 @@
 #include <iostream>
 #include <tuple>
 
+#include "debug_print.h"
+
 void pipeline_settings_t::populate_defaults(const std::vector<VkDescriptorSetLayout>& descriptor_set_layouts, render_pass_t* render_pass, std::uint32_t color_attachment_count)
 {
     this->vertex_binding_descriptions.push_back(vertex_t::get_binding_description());
@@ -204,7 +206,7 @@ graphics_pipeline_t::~graphics_pipeline_t()
         return;
     }
     vkDestroyPipeline(*(this->device), this->pipeline, this->allocator);
-    std::cout << "Destroying Graphics Pipeline!" << std::endl;
+    DEBUG_PRINT("Destroying Graphics Pipeline!")
     vkDestroyPipelineLayout(*(this->device), this->pipeline_layout, nullptr);
-    std::cout << "Destroying Pipeline Layout!" << std::endl;
+    DEBUG_PRINT("Destroying Pipeline Layout!")
 }

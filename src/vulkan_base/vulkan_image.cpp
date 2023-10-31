@@ -4,6 +4,8 @@
 #include <cmath>
 #include <iostream>
 
+#include "debug_print.h"
+
 bool has_stencil_component(VkFormat format)
 {
     return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
@@ -505,17 +507,17 @@ image_t::~image_t()
     if (this->sampler != VK_NULL_HANDLE)
     {
         vkDestroySampler(this->device->device, this->sampler, nullptr);
-        std::cout << "Destroying Image Sampler!" << std::endl;
+        DEBUG_PRINT("Destroying Image Sampler!")
     }
     vkDestroyImageView(this->device->device, this->view, nullptr);
-    std::cout << "Destroying Image View!" << std::endl;
+    DEBUG_PRINT("Destroying Image View!")
     for (VkImageView view : this->secondary_views)
     {
         vkDestroyImageView(this->device->device, view, nullptr);
     }
-    std::cout << "Destroying secondary image view(s)!" << std::endl;
+    DEBUG_PRINT("Destroying secondary image view(s)!")
     vkDestroyImage(this->device->device, this->image, this->allocator);
-    std::cout << "Destroying Image!" << std::endl;
+    DEBUG_PRINT("Destroying Image!")
     vkFreeMemory(this->device->device, this->memory, nullptr);
-    std::cout << "Freeing Image Memory!" << std::endl;
+    DEBUG_PRINT("Freeing Image Memory!")
 }

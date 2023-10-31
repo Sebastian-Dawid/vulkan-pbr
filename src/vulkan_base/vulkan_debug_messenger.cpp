@@ -1,6 +1,8 @@
 #include "vulkan_debug_messenger.h"
 #include <iostream>
 
+#include "debug_print.h"
+
 VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type,
         const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
 {
@@ -62,5 +64,5 @@ debug_messenger_t::~debug_messenger_t()
     {
         func(*(this->instance), this->debug_messenger, this->allocator);
     }
-    std::cout << "Destroying Debug Messenger!" << std::endl;
+    DEBUG_PRINT("Destroying Debug Messenger!")
 }

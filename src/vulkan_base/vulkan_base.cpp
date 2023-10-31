@@ -8,6 +8,8 @@
 #include <map>
 #include <set>
 
+#include "debug_print.h"
+
 std::vector<const char*> get_required_extensions()
 {
     std::uint32_t glfw_ext_count = 0;
@@ -58,16 +60,16 @@ std::int32_t vulkan_context_t::create_instance(std::string name)
     std::vector<VkExtensionProperties> exts(ext_count);
     vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, exts.data());
 
-    std::cout << "Available Extentions:" << std::endl;
+    DEBUG_PRINT("Available Extentions:");
     for (const VkExtensionProperties& ext : exts)
     {
-        std::cout << "\t" << ext.extensionName << std::endl;
+        DEBUG_PRINT("\t" << ext.extensionName);
     }
 
-    std::cout << "Required Extentions:" << std::endl;
+    DEBUG_PRINT("Required Extentions:");
     for (const char* ext : glfw_exts)
     {
-        std::cout << "\t" << ext << std::endl;
+        DEBUG_PRINT("\t" << ext);
     }
 
     std::function<bool()> check_for_required_exts = [&]
@@ -93,10 +95,10 @@ std::int32_t vulkan_context_t::create_instance(std::string name)
     {
         create_info.enabledLayerCount = static_cast<std::uint32_t>(validation_layers.size());
         create_info.ppEnabledLayerNames = validation_layers.data();
-        std::cout << "Enabled Validation Layers:" << std::endl;
+        DEBUG_PRINT("Enabled Validation Layers:");
         for (const char* layer_name : validation_layers)
         {
-            std::cout << "\t" << layer_name << std::endl;
+            DEBUG_PRINT("\t" << layer_name);
         }
 
         populate_debug_messenger_create_info(debug_create_info);
@@ -140,28 +142,28 @@ std::uint32_t rate_device_suitablity(const VkPhysicalDevice& physical_device, Vk
     vkGetPhysicalDeviceProperties(physical_device, &device_properties);
     vkGetPhysicalDeviceFeatures(physical_device, &device_features);
    
-    std::cout << "\t" << device_properties.deviceName << std::endl;
-    std::cout << "\t\t" << "Device ID: " << device_properties.deviceID << std::endl;
-    std::cout << "\t\t" << "Vendor ID: " << device_properties.vendorID << std::endl;
-    std::cout << "\t\t" << "GPU Type: ";
+    DEBUG_PRINT("\t" << device_properties.deviceName);
+    DEBUG_PRINT("\t\t" << "Device ID: " << device_properties.deviceID);
+    DEBUG_PRINT("\t\t" << "Vendor ID: " << device_properties.vendorID);
+    DEBUG_PRINT("\t\t" << "GPU Type: ");
     switch (device_properties.deviceType) {
         case VK_PHYSICAL_DEVICE_TYPE_OTHER:
-            std::cout << "Other GPU" << std::endl;
+            DEBUG_PRINT("Other GPU");
             break;
         case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
-            std::cout << "Integrated GPU" << std::endl;
+            DEBUG_PRINT("Integrated GPU");
             break;
         case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
-            std::cout << "Discrete GPU" << std::endl;
+            DEBUG_PRINT("Discrete GPU");
             break;
         case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
-            std::cout << "Virtual GPU" << std::endl;
+            DEBUG_PRINT("Virtual GPU");
             break;
         case VK_PHYSICAL_DEVICE_TYPE_CPU:
-            std::cout << "CPU" << std::endl;
+            DEBUG_PRINT("CPU");
             break;
         default:
-            std::cout << std::endl;
+            DEBUG_PRINT(std::endl);
     }
     
     std::int32_t score = 0;
@@ -199,7 +201,7 @@ std::int32_t vulkan_context_t::pick_physical_device()
 {
     std::uint32_t device_count = 0;
     vkEnumeratePhysicalDevices(this->instance, &device_count, nullptr);
-    std::cout << "Number of physical devices: " << device_count << std::endl;
+    DEBUG_PRINT("Number of physical devices: " << device_count);
     if (device_count == 0)
     {
         std::cerr << "Failed to find GPUs with Vulkan support!" << std::endl;
@@ -211,7 +213,7 @@ std::int32_t vulkan_context_t::pick_physical_device()
 
     std::multimap<std::uint32_t, VkPhysicalDevice> candidates;
     
-    std::cout << "Available Devices: " << std::endl;
+    DEBUG_PRINT("Available Devices: ");
     for (const VkPhysicalDevice& device : devices)
     {
         std::uint32_t score = rate_device_suitablity(device, this->surface);
@@ -221,10 +223,10 @@ std::int32_t vulkan_context_t::pick_physical_device()
     if (candidates.rbegin()->first > 0)
     {
         this->physical_device = candidates.rbegin()->second;
-        std::cout << "Chosen GPU: " << std::endl;
+        DEBUG_PRINT("Chosen GPU: ");
         VkPhysicalDeviceProperties props;
         vkGetPhysicalDeviceProperties(this->physical_device, &props);
-        std::cout << "\t" << props.deviceName << std::endl;
+        DEBUG_PRINT("\t" << props.deviceName);
 
         VkSampleCountFlags counts = props.limits.framebufferColorSampleCounts;
         if (counts & VK_SAMPLE_COUNT_64_BIT) this->msaa_samples = VK_SAMPLE_COUNT_64_BIT;
@@ -234,7 +236,7 @@ std::int32_t vulkan_context_t::pick_physical_device()
         else if (counts & VK_SAMPLE_COUNT_4_BIT) this->msaa_samples = VK_SAMPLE_COUNT_4_BIT;
         else if (counts & VK_SAMPLE_COUNT_2_BIT) this->msaa_samples = VK_SAMPLE_COUNT_2_BIT;
         
-        std::cout << "\t\tMax available MSAA samples: " << this->msaa_samples << std::endl;
+        DEBUG_PRINT("\t\tMax available MSAA samples: " << this->msaa_samples);
 
     }
     else
@@ -606,7 +608,7 @@ vulkan_context_t::~vulkan_context_t()
     {
         vkDestroyDescriptorSetLayout(this->device->device, layout, nullptr);
     }
-    std::cout << "Destroying Descriptor Set Layouts!" << std::endl;
+    DEBUG_PRINT("Destroying Descriptor Set Layouts!");
 
     for (std::uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
@@ -614,10 +616,10 @@ vulkan_context_t::~vulkan_context_t()
         vkDestroySemaphore(this->device->device, this->sync_objects.render_finished[i], nullptr);
         vkDestroyFence(this->device->device, this->sync_objects.in_flight[i], nullptr);
     }
-    std::cout << "Destroying Sync Objects!" << std::endl;
+    DEBUG_PRINT("Destroying Sync Objects!");
     
     vkDestroyCommandPool(this->device->device, this->command_pool, nullptr);
-    std::cout << "Destroying Command Pool!" << std::endl;
+    DEBUG_PRINT("Destroying Command Pool!");
     
     for (graphics_pipeline_t* pipeline : this->graphics_pipelines)
     {
@@ -638,11 +640,11 @@ vulkan_context_t::~vulkan_context_t()
     }
 
     vkDestroySurfaceKHR(this->instance, this->surface, nullptr);
-    std::cout << "Destroying Surface!" << std::endl;
+    DEBUG_PRINT("Destroying Surface!");
     vkDestroyInstance(this->instance, nullptr);
-    std::cout << "Destroying Instance!" << std::endl;
+    DEBUG_PRINT("Destroying Instance!");
     glfwDestroyWindow(this->window);
-    std::cout << "Destroying Vulkan Context!" << std::endl;
+    DEBUG_PRINT("Destroying Vulkan Context!");
 }
 
 VkExtent2D vulkan_context_t::get_swap_chain_extent()

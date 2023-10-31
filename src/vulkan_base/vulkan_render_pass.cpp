@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <iostream>
 
+#include "debug_print.h"
+
 void render_pass_settings_t::add_subpass(VkFormat format, VkSampleCountFlagBits msaa_samples, const VkPhysicalDevice* physical_device,
         std::uint32_t color_attachment_count, std::uint32_t depth_attachment_count, std::uint32_t color_resolve_attachment_count,
         std::uint32_t input_attachment_count, std::uint32_t first_input_attachment)
@@ -204,7 +206,7 @@ render_pass_t::~render_pass_t()
 {
     if (this->device == nullptr) return;
     std::for_each(this->framebuffers.begin(), this->framebuffers.end(), [&](framebuffer_t& fb){ vkDestroyFramebuffer(*this->device, fb.framebuffer, nullptr); });
-    std::cout << "Destroying Framebuffer(s)!" << std::endl;
+    DEBUG_PRINT("Destroying Framebuffer(s)!")
     vkDestroyRenderPass(*this->device, this->render_pass, nullptr);
-    std::cout << "Destroying Render Pass!" << std::endl;
+    DEBUG_PRINT("Destroying Render Pass!")
 }

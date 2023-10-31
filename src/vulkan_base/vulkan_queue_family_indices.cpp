@@ -2,6 +2,8 @@
 #include <iostream>
 #include <vector>
 
+#include "debug_print.h"
+
 bool queue_family_indices_t::is_complete()
 {
     return this->graphics_family.has_value() && this->present_family.has_value();
@@ -14,7 +16,7 @@ queue_family_indices_t::queue_family_indices_t(VkPhysicalDevice physical_device,
     std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families.data());
 
-    std::cout << "\t\tQueues: " << queue_family_count << std::endl;
+    DEBUG_PRINT("\t\tQueues: " << queue_family_count);
 
     std::uint32_t i = 0;
     for (const VkQueueFamilyProperties& queue_family : queue_families)

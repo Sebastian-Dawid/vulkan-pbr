@@ -4,6 +4,8 @@
 #include <cstring>
 #include <iostream>
 
+#include "debug_print.h"
+
 void buffer_settings_t::populate_defaults(std::uint32_t nr_vertices, VkBufferUsageFlags usage)
 {
     this->size = sizeof(vertex_t) * nr_vertices;
@@ -152,9 +154,9 @@ buffer_t::~buffer_t()
 {
     if (this->device == nullptr) return;
     vkDestroyBuffer(this->device->device, this->buffer, this->allocator);
-    std::cout << "Destroying Buffer!" << std::endl;
+    DEBUG_PRINT("Destroying Buffer!");
     vkFreeMemory(this->device->device, this->memory, nullptr);
-    std::cout << "Freeing Buffer Memory!" << std::endl;
+    DEBUG_PRINT("Freeing Buffer Memory!");
 }
 
 buffer_settings_t buffer_t::get_settings()

@@ -4,6 +4,8 @@
 #include <iostream>
 #include <set>
 
+#include "debug_print.h"
+
 std::int32_t logical_device_t::init()
 {
     std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
@@ -62,5 +64,5 @@ logical_device_t::logical_device_t(VkPhysicalDevice* physical_device, VkSurfaceK
 logical_device_t::~logical_device_t()
 {
     vkDestroyDevice(this->device, this->allocator);
-    std::cout << "Destroying Logical Device!" << std::endl;
+    DEBUG_PRINT("Destroying Logical Device!");
 }
